@@ -27,7 +27,8 @@ def create_poss_labels(fname, answer_offset_cutoff=-1):
             - very_unproductive, 1 if productive <= 2
         - answer_offset_days (equal to (answer_date - date))
     '''
-    df_phone_survey = pd.read_csv(fname)
+    input_name = '../data/' + fname
+    df_phone_survey = pd.read_csv(input_name)
     df_mood_qs = df_phone_survey[df_phone_survey['questions_raw'].map(lambda x: string.find(x, 'happy') >= 0)]
     df_mood_qs.loc[:, 'answer_date'] = df_mood_qs['date'].map(lambda x: pd.to_datetime(x.split()[0]))
     #df_mood_qs.drop('date', axis=1, inplace=True)

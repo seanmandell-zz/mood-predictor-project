@@ -1,8 +1,5 @@
-# from create_labels import create_poss_labels
 
-# CHANGE TO create_labels ####################
-from create_labels2 import create_poss_labels
-##############################################
+from create_labels import create_poss_labels
 
 from feature_engineer import engineer#_all#, read_in_as_dfs
 import numpy as np
@@ -22,16 +19,15 @@ class ModelTester(object):
         self.feature_dfs = {}
         self.df_labels = create_poss_labels('SurveyFromPhone.csv')
         self.feature_label_mat = None
-        self.models = []
+        self.models = {}
         self.X_train_folds, self.X_test_folds, self.y_all_train_folds, self.y_all_test_folds = [], [], [], []
         self.poss_labels, self.n_folds = None, None
 
         ''' Reads in raw feature_dfs'''
         for text_file in feature_text_files:
-            input_name = text_file
+            input_name = '../data/' + text_file
             df_name = "df_" + text_file.split('.')[0]
-            #globals()[df_name] = pd.read_csv(text_file)
-            self.feature_dfs[df_name] = pd.read_csv(text_file)
+            self.feature_dfs[df_name] = pd.read_csv(input_name)
         print "Labels created, feature dfs read in"
 
         #self._create_feature_label_mat()
@@ -66,53 +62,79 @@ class ModelTester(object):
                 --> For now, battery is just overall median; not enough na values to matter much
         '''
 
-        #CallLog_cols = ['call_incoming', 'call_outgoing', 'call_diff']
+        fillna_dict = {'df_CallLog': 'zero', 'df_SMSLog': 'zero', \
+                       'df_Battery': 'partic_median','df_BluetoothProximity': 'partic_median'}
 
-        if 'df_CallLog' in self.feature_dfs.keys():
-            CallLog_cols = list(self.feature_dfs['df_CallLog'].columns.values)
-            CallLog_cols.remove('participantID')
-            CallLog_cols.remove('date')
-            for col in CallLog_cols:
-                self.feature_label_mat.loc[:, col] = self.feature_label_mat[col].fillna(0) # ADDED IN .LOC
+        for df_name in self.feature_dfs.keys():
+            cols = list(self.feature_dfs[df_name].columns.values)
+            if fillna_dict[df_name] == 'zero':
+                cols.remove('participantID')
+                cols.remove('date')
+                for col in cols:
+                    self.feature_label_mat.loc[:, col] = self.feature_label_mat[col].fillna(0)
+            elif fillna_dict[df_name] == 'partic_median':
+                for col in cols:
+                    median_dict = dict(df_battery.groupby('participantID')[col].median())
+                    self.feature_label_mat.loc[pd.isnull[self.feature_label_mat[col]], col] = self.feature_label_mat[col].map(median_dict)
 
-        #['sms_incoming', 'sms_outgoing', 'sms_diff']
-        if 'df_SMSLog' in self.feature_dfs.keys():
-            SMSLog_cols = list(self.feature_dfs['df_SMSLog'].columns.values)
-            SMSLog_cols.remove('participantID')
-            SMSLog_cols.remove('date')
-            for col in SMSLog_cols:
-                self.feature_label_mat.loc[:, col] = self.feature_label_mat[col].fillna(0) # ADDED IN .LOC
+        #
+        #
+        # #CallLog_cols = ['call_incoming', 'call_outgoing', 'call_diff']
+        #
+        # if 'df_CallLog' in self.feature_dfs.keys():
+        #     CallLog_cols = list(self.feature_dfs['df_CallLog'].columns.values)
+        #     CallLog_cols.remove('participantID')
+        #     CallLog_cols.remove('date')
+        #     for col in CallLog_cols:
+        #         self.feature_label_mat.loc[:, col] = self.feature_label_mat[col].fillna(0) # ADDED IN .LOC
+        #
+        # #['sms_incoming', 'sms_outgoing', 'sms_diff']
+        # if 'df_SMSLog' in self.feature_dfs.keys():
+        #     SMSLog_cols = list(self.feature_dfs['df_SMSLog'].columns.values)
+        #     SMSLog_cols.remove('participantID')
+        #     SMSLog_cols.remove('date')
+        #     for col in SMSLog_cols:
+        #         self.feature_label_mat.loc[:, col] = self.feature_label_mat[col].fillna(0) # ADDED IN .LOC
+        #
+        # #['level', 'plugged', 'temperature', 'voltage']
+        # if 'df_Battery' in self.feature_dfs.keys():
+        #     Battery_cols = list(self.feature_dfs['df_Battery'].columns.values)
+        #     Battery_cols.remove('participantID')
+        #     Battery_cols.remove('date')
+        #     for col in Battery_cols:
+        #         ''' Now, just using overall median, not by participant '''
+        #         self.feature_label_mat.loc[:, col] = self.feature_label_mat[col].fillna(self.feature_label_mat[col].median()) # ADDED IN .LOC
+        #
+        #         # ''' Each participant's median '''
+        #         # df_median_by_partic = pd.DataFrame(self.feature_label_mat.groupby('participantID')[col].median()).reset_index()
+        #         #
+        #         # df_median_by_partic.rename(columns={col: 'median'}, inplace=True)
+        #         # median_series = self.feature_label_mat.merge(df_median_by_partic, how='left', on='participantID')['median']
+        #         # self.feature_label_mat[col] = self.feature_label_mat[col].fillna(median_series)
+        #
+        #
+        # #BluetoothProximity_cols = ['bt_n', 'bt_n_distinct']
+        # if 'df_BluetoothProximity' in self.feature_dfs.keys():
+        #     BluetoothProximity_cols = list(self.feature_dfs['df_BluetoothProximity'].columns.values)
+        #     for col in BluetoothProximity_cols:
+        #         # ''' Now, just using overall median, not by participant '''
+        #         # self.feature_label_mat.loc[:, col] = self.feature_label_mat[col].fillna(self.feature_label_mat[col].median()) # ADDED IN .LOC
+        #
+        #
+        #         ''' Each participant's median '''
+        #         df_median_by_partic = pd.DataFrame(self.feature_label_mat.groupby('participantID')[col].median()).reset_index()
+        #
+        #         df_median_by_partic.rename(columns={col: 'median'}, inplace=True)
+        #         median_series = self.feature_label_mat.merge(df_median_by_partic, how='left', on='participantID')['median']
+        #         self.feature_label_mat.loc[:, col] = self.feature_label_mat[col].fillna(median_series)
+        #
+        #
+        #         ''' FOR IPYTHON'''
+        #     for col in cols:
+        #         median_dict = dict(df_battery.groupby('participantID')[col].median())
+        #         df_battery.loc[pd.isnull[df_battery[col]], col] = df_battery[col].map(median_dict)
+        #         ''' '''
 
-        #['level', 'plugged', 'temperature', 'voltage']
-        if 'df_Battery' in self.feature_dfs.keys():
-            Battery_cols = list(self.feature_dfs['df_Battery'].columns.values)
-            Battery_cols.remove('participantID')
-            Battery_cols.remove('date')
-            for col in Battery_cols:
-                ''' Now, just using overall median, not by participant '''
-                self.feature_label_mat.loc[:, col] = self.feature_label_mat[col].fillna(self.feature_label_mat[col].median()) # ADDED IN .LOC
-
-                # ''' Each participant's median '''
-                # df_median_by_partic = pd.DataFrame(self.feature_label_mat.groupby('participantID')[col].median()).reset_index()
-                #
-                # df_median_by_partic.rename(columns={col: 'median'}, inplace=True)
-                # median_series = self.feature_label_mat.merge(df_median_by_partic, how='left', on='participantID')['median']
-                # self.feature_label_mat[col] = self.feature_label_mat[col].fillna(median_series)
-
-
-        BluetoothProximity_cols = ['bt_n', 'bt_n_distinct']
-        if 'df_BluetoothProximity' in self.feature_dfs.keys():
-            for col in BluetoothProximity_cols:
-                # ''' Now, just using overall median, not by participant '''
-                # self.feature_label_mat.loc[:, col] = self.feature_label_mat[col].fillna(self.feature_label_mat[col].median()) # ADDED IN .LOC
-
-
-                ''' Each participant's median '''
-                df_median_by_partic = pd.DataFrame(self.feature_label_mat.groupby('participantID')[col].median()).reset_index()
-
-                df_median_by_partic.rename(columns={col: 'median'}, inplace=True)
-                median_series = self.feature_label_mat.merge(df_median_by_partic, how='left', on='participantID')['median']
-                self.feature_label_mat.loc[:, col] = self.feature_label_mat[col].fillna(median_series)
 
 
     def _create_demedianed_cols(self):
@@ -180,11 +202,6 @@ class ModelTester(object):
         ''' NEW: drops rows where participantID is null '''
         mt.feature_label_mat = mt.feature_label_mat[pd.notnull(mt.feature_label_mat['participantID'])]
 
-
-        # ''' Drops rows where all features are NaN '''
-        # ''' NO SUCH ROWS'''
-        # self._drop_nan_rows()
-
         ''' Fills in missing values as appropriate '''
         self._fill_na()
 
@@ -236,6 +253,7 @@ class ModelTester(object):
         Fits and scores inputted models, printing out k-fold scores and average score
         '''
         # May be able to make more efficient by not re-creating X_train every time (might not matter much)
+        self.models = models    # Mostly to save for future reference
         for model, descrip in models.iteritems():
             mean_scores_by_label = {}
             for poss_label_col_num, poss_label in enumerate(self.poss_labels):
@@ -252,13 +270,15 @@ class ModelTester(object):
             print "==================================================="
             for label, score in mean_scores_by_label.iteritems():
                 print label, " prediction score (regr-->R^2, classifier-->accur.): ", score
+            print "==================================================="
+            print "\n\n"
 
 if __name__ == '__main__':
     ''' Reads in files to use as features'''
     feature_text_files = [
-                          "SMSLog.csv",
-                          "CallLog.csv",
-                          "Battery.csv",
+                        #   "SMSLog.csv",
+                        #   "CallLog.csv",
+                        #   "Battery.csv",
                           "BluetoothProximity.csv"
                           ]
     n_folds = 5
@@ -277,82 +297,63 @@ if __name__ == '__main__':
     mt = ModelTester(feature_text_files)
 
     mt.create_feature_label_mat(poss_labels, day_offset=0, Fri_weekend=True, keep_dow=True)
-    mt.create_cv_pipeline(n_folds)
-
-
-    ''' Defines models '''
-    ''' Regressors '''
-    rfr = RandomForestRegressor(n_jobs=-1, random_state=42)
-    dtr = DecisionTreeRegressor(max_depth=10)
-    abr25 = AdaBoostRegressor(n_estimators=25)
-    abr50 = AdaBoostRegressor(n_estimators=50) # Default
-    #abr100 = AdaBoostRegressor(n_estimators=100)
-    abr50_squareloss = AdaBoostRegressor(n_estimators=50, loss='square')
-    abr50_exploss = AdaBoostRegressor(n_estimators=50, loss='exponential')
-    gbr = GradientBoostingRegressor()
-    gbr_stoch = GradientBoostingRegressor(subsample=0.1) # Default n_estimators (100) much better than 500
-
-    ''' Classifiers '''
-    rfc = RandomForestClassifier(n_jobs=-1, random_state=42)
-    gbc = GradientBoostingClassifier()
-
-
-    ''' Loads up model-->description dictionary to pass into fit_score_models '''
-    descrips_all = {}
-    ''' Regressors '''
-    descrips_all[rfr] = 'rfr -- Random Forest Regressor'
-    descrips_all[dtr] = 'dtr -- Decision Tree Regressor'
-    descrips_all[abr25] = 'abr25 -- AdaBoost Regressor, 25 estimators'
-    descrips_all[abr50] = 'abr50 -- AdaBoost Regressor, 50 estimators (default)'
-    descrips_all[abr50_squareloss] = 'abr50_squareloss -- AdaBoost Regressor, 50 estimators (default), square loss fn'
-    descrips_all[abr50_exploss] = 'abr50_exploss -- AdaBoost Regressor, 50 estimators (default), exponential loss fn'
-    descrips_all[gbr] = 'gbr -- Gradient-Boosting Regressor'
-    descrips_all[gbr_stoch] = 'gbr_stoch -- *stochastic* Gradient-Boosting Regressor'
-    ''' Classifiers '''
-    descrips_all[rfc] = 'rfc -- Random Forest Classifier'
-    descrips_all[gbc] = 'gbc -- Gradient Boosting Classifier'
-
-    #models_all = [rfr, rfc, dtr, abr25, abr50, abr100, abr50_squareloss, abr50_exploss, gbr, gbr_stoch]
-
-    model_descrip_dict = {}
-    models_to_use = [
-            #   rfr,
-            #   dtr,
-            #   abr25,
-            #   abr50,
-            #   abr100,
-            #   abr50_squareloss,
-            #   abr50_exploss,
-              gbr,
-            #   gbr_stoch,
-
-              #rfc,
-              gbc
-            ]
-    for model in models_to_use:
-        model_descrip_dict[model] = descrips_all[model]
-
-    mt.fit_score_models(model_descrip_dict)
-
-
-''' FOR IPYTHON -------------------------------------------------------'''
-for model, descrip in model_descrip_dict.iteritems():
-    mean_scores_by_label = {}
-    for poss_label_col_num, poss_label in enumerate(mt.poss_labels):
-        scores = np.zeros(mt.n_folds)
-        for i in xrange(mt.n_folds):
-            X_train = mt.X_train_folds[i]
-            y_train = mt.y_all_train_folds[i][:, poss_label_col_num]
-            model.fit(X_train, y_train)
-            scores[i] = model.score(mt.X_test_folds[i], mt.y_all_test_folds[i][:, poss_label_col_num])
-        print "scores: ", scores
-        mean_scores_by_label[poss_label] = np.mean(scores)
-
-    for label, score in mean_scores_by_label.iteritems():
-        print "\n\n", descrip
-        print "==================================================="
-        print label, " prediction score (regr-->R^2, classifier-->accur.): ", score
-''' END FOR IPYTHON --------------------------------------------------'''
+    # mt.create_cv_pipeline(n_folds)
+    #
+    #
+    # ''' Defines models '''
+    # ''' Regressors '''
+    # rfr = RandomForestRegressor(n_jobs=-1, random_state=42)
+    # dtr = DecisionTreeRegressor(max_depth=10)
+    # abr25 = AdaBoostRegressor(n_estimators=25)
+    # abr50 = AdaBoostRegressor(n_estimators=50) # Default
+    # #abr100 = AdaBoostRegressor(n_estimators=100)
+    # abr50_squareloss = AdaBoostRegressor(n_estimators=50, loss='square')
+    # abr50_exploss = AdaBoostRegressor(n_estimators=50, loss='exponential')
+    # gbr = GradientBoostingRegressor()
+    # gbr_stoch = GradientBoostingRegressor(subsample=0.1) # Default n_estimators (100) much better than 500
+    #
+    # ''' Classifiers '''
+    # rfc = RandomForestClassifier(n_jobs=-1, random_state=42)
+    # gbc = GradientBoostingClassifier()
+    #
+    #
+    # ''' Loads up model-->description dictionary to pass into fit_score_models '''
+    # descrips_all = {}
+    # ''' Regressors '''
+    # descrips_all[rfr] = 'rfr -- Random Forest Regressor'
+    # descrips_all[dtr] = 'dtr -- Decision Tree Regressor'
+    # descrips_all[abr25] = 'abr25 -- AdaBoost Regressor, 25 estimators'
+    # descrips_all[abr50] = 'abr50 -- AdaBoost Regressor, 50 estimators (default)'
+    # descrips_all[abr50_squareloss] = 'abr50_squareloss -- AdaBoost Regressor, 50 estimators (default), square loss fn'
+    # descrips_all[abr50_exploss] = 'abr50_exploss -- AdaBoost Regressor, 50 estimators (default), exponential loss fn'
+    # descrips_all[gbr] = 'gbr -- Gradient-Boosting Regressor'
+    # descrips_all[gbr_stoch] = 'gbr_stoch -- *stochastic* Gradient-Boosting Regressor'
+    # ''' Classifiers '''
+    # descrips_all[rfc] = 'rfc -- Random Forest Classifier'
+    # descrips_all[gbc] = 'gbc -- Gradient Boosting Classifier'
+    #
+    # #models_all = [rfr, rfc, dtr, abr25, abr50, abr100, abr50_squareloss, abr50_exploss, gbr, gbr_stoch]
+    #
+    # model_descrip_dict = {}
+    # models_to_use = [
+    #         #   rfr,
+    #         #   dtr,
+    #         #   abr25,
+    #         #   abr50,
+    #         #   abr100,
+    #         #   abr50_squareloss,
+    #         #   abr50_exploss,
+    #           gbr,
+    #         #   gbr_stoch,
+    #
+    #           #rfc,
+    #           gbc
+    #         ]
+    # for model in models_to_use:
+    #     model_descrip_dict[model] = descrips_all[model]
+    #
+    # mt.fit_score_models(model_descrip_dict)
+    #
 
     ''' AdaBoost: 50 (n_est) seems to do slightly (but definitely) better than 100, and maybe better than 25 '''
 
