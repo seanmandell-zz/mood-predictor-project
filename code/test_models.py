@@ -1,7 +1,3 @@
-
-from create_labels import create_poss_labels
-
-from feature_engineer import engineer#_all#, read_in_as_dfs
 import numpy as np
 import pandas as pd
 from pandas import Timestamp
@@ -9,6 +5,9 @@ from sklearn import metrics, cross_validation
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, AdaBoostRegressor, \
                              GradientBoostingRegressor, GradientBoostingClassifier
 from sklearn.tree import DecisionTreeRegressor
+from create_labels import create_poss_labels
+from feature_engineer import engineer#_all#, read_in_as_dfs
+from network_engineer import engineer_bt_network
 
 
 class ModelTester(object):
@@ -22,6 +21,8 @@ class ModelTester(object):
         self.models = {}
         self.X_train_folds, self.X_test_folds, self.y_all_train_folds, self.y_all_test_folds = [], [], [], []
         self.poss_labels, self.n_folds = None, None
+        self.features_used = None
+        self.feature_importances = []
 
         ''' Reads in raw feature_dfs'''
         for text_file in feature_text_files:
@@ -62,8 +63,8 @@ class ModelTester(object):
                 --> For now, battery is just overall median; not enough na values to matter much
         '''
 
-        fillna_dict = {'df_CallLog': 'zero', 'df_SMSLog': 'zero', \
-                       'df_Battery': 'partic_median','df_BluetoothProximity': 'partic_median'}
+        fillna_dict = {'df_CallLog': 'zero', 'df_SMSLog': 'zero', 'df_network': 'zero', \
+                       'df_Battery': 'partic_median', 'df_BluetoothProximity': 'partic_median'}
 
         for df_name in self.feature_dfs.keys():
             cols = list(self.feature_dfs[df_name].columns.values)
@@ -71,11 +72,14 @@ class ModelTester(object):
                 cols.remove('participantID')
                 cols.remove('date')
                 for col in cols:
-                    self.feature_label_mat.loc[:, col] = self.feature_label_mat[col].fillna(0)
+                    # self.feature_label_mat.loc[:, col] = self.feature_label_mat[col].fillna(0)
+                    self.feature_label_mat[col].fillna(0, inplace=True)
             elif fillna_dict[df_name] == 'partic_median':
                 for col in cols:
-                    median_dict = dict(df_battery.groupby('participantID')[col].median())
-                    self.feature_label_mat.loc[pd.isnull[self.feature_label_mat[col]], col] = self.feature_label_mat[col].map(median_dict)
+                    if (col != 'date' and col != 'participantID'):
+                        median_dict = dict(self.feature_label_mat.groupby('participantID')[col].median())
+                        self.feature_label_mat.loc[pd.isnull(self.feature_label_mat[col]), col] = \
+                                                            self.feature_label_mat[col].map(median_dict)
 
         #
         #
@@ -189,6 +193,7 @@ class ModelTester(object):
         self.poss_labels = poss_labels
 
         ''' Engineers features'''
+        self.feature_dfs['df_network'] = engineer_bt_network(self.feature_dfs['df_BluetoothProximity'], day_offset)
         for name, feature_df in self.feature_dfs.iteritems():
             self.feature_dfs[name] = engineer(name, feature_df, day_offset)
 
@@ -196,8 +201,8 @@ class ModelTester(object):
         ''' Merges features and labels into one DataFrame'''
         for feature_df in self.feature_dfs.itervalues():
             self.df_labels = self.df_labels.merge(feature_df, how='left', on=['participantID', 'date'])
+        #self.df_labels = self.df_labels.merge(network_df, how='left', on=['participantID', 'date'])
         self.feature_label_mat = self.df_labels
-
 
         ''' NEW: drops rows where participantID is null '''
         mt.feature_label_mat = mt.feature_label_mat[pd.notnull(mt.feature_label_mat['participantID'])]
@@ -214,13 +219,33 @@ class ModelTester(object):
         #self._create_demedianed_cols()
 
         ''' NEW: fills the few remaining null values with 0 '''
-        mt.feature_label_mat.fillna(0, inplace=True)
+        self.feature_label_mat.fillna(0, inplace=True)
 
 
         ''' Adds a dummy 'weekend', 1 for Sat/Sun (and Fri if Fri_weekend=True), 0 otherwise '''
         self._add_weekend_col(Fri_weekend=Fri_weekend, keep_dow=keep_dow)
 
+        ''' Drops 'index' column if it exists '''
+        if list(self.feature_label_mat.columns).count('index') > 0:
+            self.feature_label_mat.drop('index', axis=1, inplace=True)
 
+
+        # mt._fill_na()
+        #
+        # ''' Drops 'cnt nan' column if it exists '''
+        # if list(mt.feature_label_mat.columns).count('cnt nan') > 0:
+        #     mt.feature_label_mat.drop('cnt nan', axis=1, inplace=True)
+        #
+        # ''' Creates new columns with differences from each user's median value (for *all* feature columns)'''
+        # ''' Note (1/11/16): including demedianed doesn't seem to help, and may slightly hurt, AdaBoost '''
+        # #mt._create_demedianed_cols()
+        #
+        # ''' NEW: fills the few remaining null values with 0 '''
+        # mt.feature_label_mat.fillna(0, inplace=True)
+        #
+        #
+        # ''' Adds a dummy 'weekend', 1 for Sat/Sun (and Fri if Fri_weekend=True), 0 otherwise '''
+        # mt._add_weekend_col(Fri_weekend=Fri_weekend, keep_dow=keep_dow)
 
 
 
@@ -232,6 +257,18 @@ class ModelTester(object):
         n_elems = self.feature_label_mat.shape[0]
         kf = cross_validation.KFold(n_elems, n_folds=n_folds)
         drop_from_X = self.poss_labels + ['participantID', 'date']
+
+        ''' DELETE ******************************************* '''
+        # X_delete = self.feature_label_mat.drop(drop_from_X, axis=1)
+        # X_delete_values = self.feature_label_mat.drop(drop_from_X, axis=1).values
+        # print "*******************************************"
+        # print "X_delete.head() (shouldn't have possible labels, participantID, or date):"
+        # print X_delete.head()
+        # print "X_delete_values.shape: ", X_delete_values.shape
+        # print "*******************************************"
+        ''' ************************************************** '''
+
+        self.features_used = self.feature_label_mat.drop(drop_from_X, axis=1).columns.values
         X = self.feature_label_mat.drop(drop_from_X, axis=1).values  # Need to use .values for KFold
         y_all = self.feature_label_mat[self.poss_labels].values   # Need to use .values for KFold
 
@@ -266,6 +303,18 @@ class ModelTester(object):
                 print "scores: ", scores
                 mean_scores_by_label[poss_label] = np.mean(scores)
 
+                ''' Feature importances '''
+
+                ''' Can delete '''
+                # print '''\n ************************************************ '''
+                # print "self.features_used: ", self.features_used
+                # print "model.feature_importances_: ", model.feature_importances_
+                # print ''' ************************************************ \n'''
+
+                importances = np.array(zip(self.features_used, model.feature_importances_))
+                descending_importance_indexes = np.argsort(model.feature_importances_)[::-1]
+                self.feature_importances.append((descrip, poss_label, importances[descending_importance_indexes]))
+
             print "\n\n", descrip
             print "==================================================="
             for label, score in mean_scores_by_label.iteritems():
@@ -276,9 +325,9 @@ class ModelTester(object):
 if __name__ == '__main__':
     ''' Reads in files to use as features'''
     feature_text_files = [
-                        #   "SMSLog.csv",
-                        #   "CallLog.csv",
-                        #   "Battery.csv",
+                          "SMSLog.csv",
+                          "CallLog.csv",
+                          "Battery.csv",
                           "BluetoothProximity.csv"
                           ]
     n_folds = 5
@@ -297,63 +346,72 @@ if __name__ == '__main__':
     mt = ModelTester(feature_text_files)
 
     mt.create_feature_label_mat(poss_labels, day_offset=0, Fri_weekend=True, keep_dow=True)
-    # mt.create_cv_pipeline(n_folds)
-    #
-    #
-    # ''' Defines models '''
-    # ''' Regressors '''
-    # rfr = RandomForestRegressor(n_jobs=-1, random_state=42)
-    # dtr = DecisionTreeRegressor(max_depth=10)
-    # abr25 = AdaBoostRegressor(n_estimators=25)
-    # abr50 = AdaBoostRegressor(n_estimators=50) # Default
-    # #abr100 = AdaBoostRegressor(n_estimators=100)
-    # abr50_squareloss = AdaBoostRegressor(n_estimators=50, loss='square')
-    # abr50_exploss = AdaBoostRegressor(n_estimators=50, loss='exponential')
-    # gbr = GradientBoostingRegressor()
-    # gbr_stoch = GradientBoostingRegressor(subsample=0.1) # Default n_estimators (100) much better than 500
-    #
-    # ''' Classifiers '''
-    # rfc = RandomForestClassifier(n_jobs=-1, random_state=42)
-    # gbc = GradientBoostingClassifier()
-    #
-    #
-    # ''' Loads up model-->description dictionary to pass into fit_score_models '''
-    # descrips_all = {}
-    # ''' Regressors '''
-    # descrips_all[rfr] = 'rfr -- Random Forest Regressor'
-    # descrips_all[dtr] = 'dtr -- Decision Tree Regressor'
-    # descrips_all[abr25] = 'abr25 -- AdaBoost Regressor, 25 estimators'
-    # descrips_all[abr50] = 'abr50 -- AdaBoost Regressor, 50 estimators (default)'
-    # descrips_all[abr50_squareloss] = 'abr50_squareloss -- AdaBoost Regressor, 50 estimators (default), square loss fn'
-    # descrips_all[abr50_exploss] = 'abr50_exploss -- AdaBoost Regressor, 50 estimators (default), exponential loss fn'
-    # descrips_all[gbr] = 'gbr -- Gradient-Boosting Regressor'
-    # descrips_all[gbr_stoch] = 'gbr_stoch -- *stochastic* Gradient-Boosting Regressor'
-    # ''' Classifiers '''
-    # descrips_all[rfc] = 'rfc -- Random Forest Classifier'
-    # descrips_all[gbc] = 'gbc -- Gradient Boosting Classifier'
-    #
-    # #models_all = [rfr, rfc, dtr, abr25, abr50, abr100, abr50_squareloss, abr50_exploss, gbr, gbr_stoch]
-    #
-    # model_descrip_dict = {}
-    # models_to_use = [
-    #         #   rfr,
-    #         #   dtr,
-    #         #   abr25,
-    #         #   abr50,
-    #         #   abr100,
-    #         #   abr50_squareloss,
-    #         #   abr50_exploss,
-    #           gbr,
-    #         #   gbr_stoch,
-    #
-    #           #rfc,
-    #           gbc
-    #         ]
-    # for model in models_to_use:
-    #     model_descrip_dict[model] = descrips_all[model]
-    #
-    # mt.fit_score_models(model_descrip_dict)
-    #
+
+
+    ''' ****************************************************************** '''
+
+    mt.create_cv_pipeline(n_folds)
+
+
+    ''' Defines models '''
+    ''' Regressors '''
+    rfr = RandomForestRegressor(n_jobs=-1, random_state=42)
+    dtr = DecisionTreeRegressor(max_depth=10)
+    abr25 = AdaBoostRegressor(n_estimators=25)
+    abr50 = AdaBoostRegressor(n_estimators=50) # Default
+    #abr100 = AdaBoostRegressor(n_estimators=100)
+    abr50_squareloss = AdaBoostRegressor(n_estimators=50, loss='square')
+    abr50_exploss = AdaBoostRegressor(n_estimators=50, loss='exponential')
+    gbr = GradientBoostingRegressor()
+    gbr_stoch = GradientBoostingRegressor(subsample=0.1) # Default n_estimators (100) much better than 500
+
+    ''' Classifiers '''
+    rfc = RandomForestClassifier(n_jobs=-1, random_state=42)
+    gbc = GradientBoostingClassifier()
+
+
+    ''' Loads up model-->description dictionary to pass into fit_score_models '''
+    descrips_all = {}
+    ''' Regressors '''
+    descrips_all[rfr] = 'rfr -- Random Forest Regressor'
+    descrips_all[dtr] = 'dtr -- Decision Tree Regressor'
+    descrips_all[abr25] = 'abr25 -- AdaBoost Regressor, 25 estimators'
+    descrips_all[abr50] = 'abr50 -- AdaBoost Regressor, 50 estimators (default)'
+    descrips_all[abr50_squareloss] = 'abr50_squareloss -- AdaBoost Regressor, 50 estimators (default), square loss fn'
+    descrips_all[abr50_exploss] = 'abr50_exploss -- AdaBoost Regressor, 50 estimators (default), exponential loss fn'
+    descrips_all[gbr] = 'gbr -- Gradient-Boosting Regressor'
+    descrips_all[gbr_stoch] = 'gbr_stoch -- *stochastic* Gradient-Boosting Regressor'
+    ''' Classifiers '''
+    descrips_all[rfc] = 'rfc -- Random Forest Classifier'
+    descrips_all[gbc] = 'gbc -- Gradient Boosting Classifier'
+
+    #models_all = [rfr, rfc, dtr, abr25, abr50, abr100, abr50_squareloss, abr50_exploss, gbr, gbr_stoch]
+
+    model_descrip_dict = {}
+    models_to_use = [
+            #   rfr,
+            #   dtr,
+            #   abr25,
+            #   abr50,
+            #   abr100,
+            #   abr50_squareloss,
+            #   abr50_exploss,
+              gbr#,
+            #   gbr_stoch,
+
+              #rfc,
+              #gbc
+            ]
+    for model in models_to_use:
+        model_descrip_dict[model] = descrips_all[model]
+
+    mt.fit_score_models(model_descrip_dict)
+
+
+
+
+
+
 
     ''' AdaBoost: 50 (n_est) seems to do slightly (but definitely) better than 100, and maybe better than 25 '''
 
