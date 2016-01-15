@@ -6,8 +6,8 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, AdaB
                              GradientBoostingRegressor, GradientBoostingClassifier
 from sklearn.tree import DecisionTreeRegressor
 from create_labels import create_poss_labels
-from feature_engineer import engineer#_all#, read_in_as_dfs
-from network_engineer import engineer_bt_network
+from feature_engineer import engineer, _daily_stats_most_freq
+# from network_engineer import engineer_bt_network
 
 
 class ModelTester(object):
@@ -38,6 +38,33 @@ class ModelTester(object):
         #     feature_cols.remove('date')
         #     cols_with_some_nan += feature_cols
 
+
+    def _limit_dates(min_date='2010-11-12', max_date='2011-05-21'):
+        '''
+        INPUT: DataFrame with local_time column, string, string, string
+        OUTPUT: None
+        Keeps observations within [min_date, max_date], inclusive (where a day is defined as 4 AM to 4 AM the next day).
+        Does other minimal cleaning.
+        (Can currently handle bt, battery, sms, call)
+        '''
+
+        for df_name in self.feature_dfs.iterkeys():
+            df = self.feature_dfs[df_name]
+            if df_name == 'df_BluetoothProximity':
+                ''' Limits dates to relevant period; removes possibly erroneous nighttime observations'''
+                df = df.rename(columns={'date': 'local_time'})
+                df['local_time'] = pd.DatetimeIndex(pd.to_datetime(df['local_time']))
+                df = df[df['local_time'].dt.hour >= 7] # Per Friends and Family paper (8.2.1), removes b/n midnight and 7 AM
+            elif df_name == 'df_Battery':
+                df = df.rename(columns={'date': 'local_time'})
+
+            df['local_time'] = pd.DatetimeIndex(pd.to_datetime(df['local_time']))
+            df.loc[df['local_time'].dt.hour < 4, 'local_time'] = (pd.DatetimeIndex(df[df['local_time'].dt.hour < 4]['local_time']) - \
+                                                                 DateOffset(1))
+            df['date'] = df['local_time'].dt.date
+            df = df.drop('local_time', axis=1)
+            df = df[((df['date'] >= datetime.date(pd.to_datetime(min_date))) & \
+                     (df['date'] <= datetime.date(pd.to_datetime(max_date))))]
 
     def _drop_nan_rows(self):
         '''
@@ -80,64 +107,6 @@ class ModelTester(object):
                         median_dict = dict(self.feature_label_mat.groupby('participantID')[col].median())
                         self.feature_label_mat.loc[pd.isnull(self.feature_label_mat[col]), col] = \
                                                             self.feature_label_mat[col].map(median_dict)
-
-        #
-        #
-        # #CallLog_cols = ['call_incoming', 'call_outgoing', 'call_diff']
-        #
-        # if 'df_CallLog' in self.feature_dfs.keys():
-        #     CallLog_cols = list(self.feature_dfs['df_CallLog'].columns.values)
-        #     CallLog_cols.remove('participantID')
-        #     CallLog_cols.remove('date')
-        #     for col in CallLog_cols:
-        #         self.feature_label_mat.loc[:, col] = self.feature_label_mat[col].fillna(0) # ADDED IN .LOC
-        #
-        # #['sms_incoming', 'sms_outgoing', 'sms_diff']
-        # if 'df_SMSLog' in self.feature_dfs.keys():
-        #     SMSLog_cols = list(self.feature_dfs['df_SMSLog'].columns.values)
-        #     SMSLog_cols.remove('participantID')
-        #     SMSLog_cols.remove('date')
-        #     for col in SMSLog_cols:
-        #         self.feature_label_mat.loc[:, col] = self.feature_label_mat[col].fillna(0) # ADDED IN .LOC
-        #
-        # #['level', 'plugged', 'temperature', 'voltage']
-        # if 'df_Battery' in self.feature_dfs.keys():
-        #     Battery_cols = list(self.feature_dfs['df_Battery'].columns.values)
-        #     Battery_cols.remove('participantID')
-        #     Battery_cols.remove('date')
-        #     for col in Battery_cols:
-        #         ''' Now, just using overall median, not by participant '''
-        #         self.feature_label_mat.loc[:, col] = self.feature_label_mat[col].fillna(self.feature_label_mat[col].median()) # ADDED IN .LOC
-        #
-        #         # ''' Each participant's median '''
-        #         # df_median_by_partic = pd.DataFrame(self.feature_label_mat.groupby('participantID')[col].median()).reset_index()
-        #         #
-        #         # df_median_by_partic.rename(columns={col: 'median'}, inplace=True)
-        #         # median_series = self.feature_label_mat.merge(df_median_by_partic, how='left', on='participantID')['median']
-        #         # self.feature_label_mat[col] = self.feature_label_mat[col].fillna(median_series)
-        #
-        #
-        # #BluetoothProximity_cols = ['bt_n', 'bt_n_distinct']
-        # if 'df_BluetoothProximity' in self.feature_dfs.keys():
-        #     BluetoothProximity_cols = list(self.feature_dfs['df_BluetoothProximity'].columns.values)
-        #     for col in BluetoothProximity_cols:
-        #         # ''' Now, just using overall median, not by participant '''
-        #         # self.feature_label_mat.loc[:, col] = self.feature_label_mat[col].fillna(self.feature_label_mat[col].median()) # ADDED IN .LOC
-        #
-        #
-        #         ''' Each participant's median '''
-        #         df_median_by_partic = pd.DataFrame(self.feature_label_mat.groupby('participantID')[col].median()).reset_index()
-        #
-        #         df_median_by_partic.rename(columns={col: 'median'}, inplace=True)
-        #         median_series = self.feature_label_mat.merge(df_median_by_partic, how='left', on='participantID')['median']
-        #         self.feature_label_mat.loc[:, col] = self.feature_label_mat[col].fillna(median_series)
-        #
-        #
-        #         ''' FOR IPYTHON'''
-        #     for col in cols:
-        #         median_dict = dict(df_battery.groupby('participantID')[col].median())
-        #         df_battery.loc[pd.isnull[df_battery[col]], col] = df_battery[col].map(median_dict)
-        #         ''' '''
 
 
 
@@ -184,7 +153,8 @@ class ModelTester(object):
 
 
 
-    def create_feature_label_mat(self, poss_labels, day_offset=0, Fri_weekend=True, keep_dow=False):
+    def create_feature_label_mat(self, poss_labels, Fri_weekend=True, keep_dow=False, \
+                                 basic_call_sms_bt_features, advanced_call_sms_bt_features, other_features):
         '''
         INPUT: list of strings, int, bool, bool
         OUTPUT: None
@@ -192,10 +162,16 @@ class ModelTester(object):
         '''
         self.poss_labels = poss_labels
 
+        self._limit_dates()
         ''' Engineers features'''
-        self.feature_dfs['df_network'] = engineer_bt_network(self.feature_dfs['df_BluetoothProximity'], day_offset)
-        for name, feature_df in self.feature_dfs.iteritems():
-            self.feature_dfs[name] = engineer(name, feature_df, day_offset)
+        # self.feature_dfs['df_network'] = engineer_bt_network(self.feature_dfs['df_BluetoothProximity'])
+
+        ''' CHANGE NAME OF df_network to be bt_daily or something like that'''
+        self.feature_dfs['df_network'] = _daily_stats_most_freq(self.feature_dfs['df_BluetoothProximity'], 'bt', partic_name='participantID', target_name='participantID.B', add_centrality_chars=True)
+
+        if basic_call_sms_bt_features:
+            for name, feature_df in self.feature_dfs.iteritems():
+                self.feature_dfs[name] = engineer(name, feature_df)
 
 
         ''' Merges features and labels into one DataFrame'''
@@ -230,25 +206,6 @@ class ModelTester(object):
             self.feature_label_mat.drop('index', axis=1, inplace=True)
 
 
-        # mt._fill_na()
-        #
-        # ''' Drops 'cnt nan' column if it exists '''
-        # if list(mt.feature_label_mat.columns).count('cnt nan') > 0:
-        #     mt.feature_label_mat.drop('cnt nan', axis=1, inplace=True)
-        #
-        # ''' Creates new columns with differences from each user's median value (for *all* feature columns)'''
-        # ''' Note (1/11/16): including demedianed doesn't seem to help, and may slightly hurt, AdaBoost '''
-        # #mt._create_demedianed_cols()
-        #
-        # ''' NEW: fills the few remaining null values with 0 '''
-        # mt.feature_label_mat.fillna(0, inplace=True)
-        #
-        #
-        # ''' Adds a dummy 'weekend', 1 for Sat/Sun (and Fri if Fri_weekend=True), 0 otherwise '''
-        # mt._add_weekend_col(Fri_weekend=Fri_weekend, keep_dow=keep_dow)
-
-
-
     def create_cv_pipeline(self, n_folds):
         # Note: Need to build this out myself rather than using, e.g., cross_val_score because
         # I want the same train and test sets for all iterations I'm testing
@@ -257,16 +214,6 @@ class ModelTester(object):
         n_elems = self.feature_label_mat.shape[0]
         kf = cross_validation.KFold(n_elems, n_folds=n_folds)
         drop_from_X = self.poss_labels + ['participantID', 'date']
-
-        ''' DELETE ******************************************* '''
-        # X_delete = self.feature_label_mat.drop(drop_from_X, axis=1)
-        # X_delete_values = self.feature_label_mat.drop(drop_from_X, axis=1).values
-        # print "*******************************************"
-        # print "X_delete.head() (shouldn't have possible labels, participantID, or date):"
-        # print X_delete.head()
-        # print "X_delete_values.shape: ", X_delete_values.shape
-        # print "*******************************************"
-        ''' ************************************************** '''
 
         self.features_used = self.feature_label_mat.drop(drop_from_X, axis=1).columns.values
         X = self.feature_label_mat.drop(drop_from_X, axis=1).values  # Need to use .values for KFold
@@ -289,7 +236,6 @@ class ModelTester(object):
         OUTPUT: None
         Fits and scores inputted models, printing out k-fold scores and average score
         '''
-        # May be able to make more efficient by not re-creating X_train every time (might not matter much)
         self.models = models    # Mostly to save for future reference
         for model, descrip in models.iteritems():
             mean_scores_by_label = {}
@@ -304,13 +250,6 @@ class ModelTester(object):
                 mean_scores_by_label[poss_label] = np.mean(scores)
 
                 ''' Feature importances '''
-
-                ''' Can delete '''
-                # print '''\n ************************************************ '''
-                # print "self.features_used: ", self.features_used
-                # print "model.feature_importances_: ", model.feature_importances_
-                # print ''' ************************************************ \n'''
-
                 importances = np.array(zip(self.features_used, model.feature_importances_))
                 descending_importance_indexes = np.argsort(model.feature_importances_)[::-1]
                 self.feature_importances.append((descrip, poss_label, importances[descending_importance_indexes]))
@@ -320,9 +259,14 @@ class ModelTester(object):
             for label, score in mean_scores_by_label.iteritems():
                 print label, " prediction score (regr-->R^2, classifier-->accur.): ", score
             print "==================================================="
-            print "\n\n"
+            print "\n"
 
 if __name__ == '__main__':
+    basic_call_sms_bt_features = True
+    advanced_call_sms_bt_features = True
+    other_features = True
+
+
     ''' Reads in files to use as features'''
     feature_text_files = [
                           "SMSLog.csv",
@@ -345,7 +289,8 @@ if __name__ == '__main__':
     #feature_dfs = [df_SMSLog, df_CallLog], df_Battery]
     mt = ModelTester(feature_text_files)
 
-    mt.create_feature_label_mat(poss_labels, day_offset=0, Fri_weekend=True, keep_dow=True)
+    mt.create_feature_label_mat(poss_labels, Fri_weekend=True, keep_dow=True,\
+                                basic_call_sms_bt_features, advanced_call_sms_bt_features, other_features)
 
 
     ''' ****************************************************************** '''
@@ -370,7 +315,7 @@ if __name__ == '__main__':
     gbc = GradientBoostingClassifier()
 
 
-    ''' Loads up model-->description dictionary to pass into fit_score_models '''
+    ''' Loads up {model-->description} dictionary to pass into fit_score_models '''
     descrips_all = {}
     ''' Regressors '''
     descrips_all[rfr] = 'rfr -- Random Forest Regressor'
@@ -387,6 +332,7 @@ if __name__ == '__main__':
 
     #models_all = [rfr, rfc, dtr, abr25, abr50, abr100, abr50_squareloss, abr50_exploss, gbr, gbr_stoch]
 
+    ''' Defines which models to test '''
     model_descrip_dict = {}
     models_to_use = [
             #   rfr,
