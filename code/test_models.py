@@ -1,20 +1,24 @@
 import numpy as np
 import pandas as pd
 from pandas import Timestamp
+from pandas.tseries.offsets import *
+from datetime import datetime
 from sklearn import metrics, cross_validation
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, AdaBoostRegressor, \
                              GradientBoostingRegressor, GradientBoostingClassifier
 from sklearn.tree import DecisionTreeRegressor
 from create_labels import create_poss_labels
 from feature_engineer import engineer, _daily_stats_most_freq
-# from network_engineer import engineer_bt_network
-
+import networkx as nx
 
 class ModelTester(object):
-    '''
-    INPUT (class constructor): list of DataFrames
-    '''
     def __init__(self, feature_text_files):
+        '''
+        INPUT: list of strings
+        OUTPUT: None
+
+        Class constructor.
+        '''
         self.feature_dfs = {}
         self.df_labels = create_poss_labels('SurveyFromPhone.csv')
         self.feature_label_mat = None
@@ -31,18 +35,11 @@ class ModelTester(object):
             self.feature_dfs[df_name] = pd.read_csv(input_name)
         print "Labels created, feature dfs read in"
 
-        #self._create_feature_label_mat()
-        # for df in self.feature_dfs.itervalues():
-        #     feature_cols = list(self.feature_dfs[i].columns)
-        #     feature_cols.remove('participantID')
-        #     feature_cols.remove('date')
-        #     cols_with_some_nan += feature_cols
-
-
-    def _limit_dates(min_date='2010-11-12', max_date='2011-05-21'):
+    def _limit_dates(self, min_date='2010-11-12', max_date='2011-05-21'):
         '''
         INPUT: DataFrame with local_time column, string, string, string
         OUTPUT: None
+
         Keeps observations within [min_date, max_date], inclusive (where a day is defined as 4 AM to 4 AM the next day).
         Does other minimal cleaning.
         (Can currently handle bt, battery, sms, call)
@@ -65,29 +62,14 @@ class ModelTester(object):
             df = df.drop('local_time', axis=1)
             df = df[((df['date'] >= datetime.date(pd.to_datetime(min_date))) & \
                      (df['date'] <= datetime.date(pd.to_datetime(max_date))))]
-
-    def _drop_nan_rows(self):
-        '''
-        INPUT: None
-        OUTPUT: None
-        Drops rows in self.feature_label_mat where all values are missing
-        '''
-        #cols_with_some_nan = []
-        for df in self.feature_dfs.itervalues():
-            feature_cols = list(df.columns)
-            feature_cols.remove('participantID')
-            feature_cols.remove('date')
-            #cols_with_some_nan += feature_cols
-        self.feature_label_mat = self.feature_label_mat[self.feature_label_mat[feature_cols].sum(axis=1) != 0]
+            self.feature_dfs[df_name] = df
 
     def _fill_na(self):
         '''
         INPUT: None
         OUTPUT: None
-        Fills in na values as appropriate
-            - Call and SMS: set to 0
-            - Battery and BluetoothProximity: set to each participant's median value
-                --> For now, battery is just overall median; not enough na values to matter much
+
+        Fills in missing values: according to fillna_dict, sets to 0 or to each participant's median value.
         '''
 
         fillna_dict = {'df_CallLog': 'zero', 'df_SMSLog': 'zero', 'df_network': 'zero', \
@@ -99,7 +81,6 @@ class ModelTester(object):
                 cols.remove('participantID')
                 cols.remove('date')
                 for col in cols:
-                    # self.feature_label_mat.loc[:, col] = self.feature_label_mat[col].fillna(0)
                     self.feature_label_mat[col].fillna(0, inplace=True)
             elif fillna_dict[df_name] == 'partic_median':
                 for col in cols:
@@ -125,15 +106,11 @@ class ModelTester(object):
 
         for col in feature_cols:
             new_col_name = col + "_demedianed"
-
-            ''' Each participant's median '''
             df_median_by_partic = pd.DataFrame(self.feature_label_mat.groupby('participantID')[col].median()).reset_index()
-            #df_median_by_partic = pd.DataFrame(df.groupby('participantID')['bt_n'].median()).reset_index()
             df_median_by_partic.rename(columns={col: 'median'}, inplace=True)
             median_series = self.feature_label_mat.merge(df_median_by_partic, how='left', on='participantID')['median']
-            self.feature_label_mat[new_col_name] = median_series#self.feature_label_mat[col].fillna(median_series)
+            self.feature_label_mat[new_col_name] = median_series
             self.feature_label_mat[new_col_name] = self.feature_label_mat[col] - self.feature_label_mat[new_col_name]
-
 
     def _add_weekend_col(self, Fri_weekend=True, keep_dow=False):
         '''
@@ -147,31 +124,30 @@ class ModelTester(object):
         day_to_split = 5 - 1 * Fri_weekend
         self.feature_label_mat.loc[self.feature_label_mat['day_of_week'] >= day_to_split, 'weekend'] = 1
         self.feature_label_mat.loc[self.feature_label_mat['day_of_week'] < day_to_split, 'weekend'] = 0
-
         if not keep_dow:
             self.feature_label_mat.drop('day_of_week', axis=1, inplace=True)
 
-
-
-    def create_feature_label_mat(self, poss_labels, Fri_weekend=True, keep_dow=False, \
-                                 basic_call_sms_bt_features, advanced_call_sms_bt_features, other_features):
+    def create_feature_label_mat(self, poss_labels, basic_call_sms_bt_features, advanced_call_sms_bt_features, \
+                                 other_features, min_date, max_date, Fri_weekend=True, keep_dow=False):
         '''
         INPUT: list of strings, int, bool, bool
         OUTPUT: None
         Creates a feature-matrix DataFrame, and deals with missing values.
         '''
         self.poss_labels = poss_labels
-
-        self._limit_dates()
+        self._limit_dates(min_date, max_date)
         ''' Engineers features'''
         # self.feature_dfs['df_network'] = engineer_bt_network(self.feature_dfs['df_BluetoothProximity'])
 
         ''' CHANGE NAME OF df_network to be bt_daily or something like that'''
-        self.feature_dfs['df_network'] = _daily_stats_most_freq(self.feature_dfs['df_BluetoothProximity'], 'bt', partic_name='participantID', target_name='participantID.B', add_centrality_chars=True)
+        df_bt = self.feature_dfs['df_BluetoothProximity']
+        df_advanced_bt_input = df_bt[pd.notnull(df_bt['participantID.B'])]
+        self.feature_dfs['df_network'] = _daily_stats_most_freq(df_advanced_bt_input, 'bt', partic_name='participantID', target_name='participantID.B', add_centrality_chars=True)
 
         if basic_call_sms_bt_features:
             for name, feature_df in self.feature_dfs.iteritems():
-                self.feature_dfs[name] = engineer(name, feature_df)
+                self.feature_dfs[name] = engineer(name, feature_df, basic_call_sms_bt_features, \
+                                                  advanced_call_sms_bt_features, other_features)
 
 
         ''' Merges features and labels into one DataFrame'''
@@ -197,7 +173,6 @@ class ModelTester(object):
         ''' NEW: fills the few remaining null values with 0 '''
         self.feature_label_mat.fillna(0, inplace=True)
 
-
         ''' Adds a dummy 'weekend', 1 for Sat/Sun (and Fri if Fri_weekend=True), 0 otherwise '''
         self._add_weekend_col(Fri_weekend=Fri_weekend, keep_dow=keep_dow)
 
@@ -207,23 +182,28 @@ class ModelTester(object):
 
 
     def create_cv_pipeline(self, n_folds):
-        # Note: Need to build this out myself rather than using, e.g., cross_val_score because
-        # I want the same train and test sets for all iterations I'm testing
-        ''' 1. Pull out X, y_all (all possible labels contained in y_all) '''
+        '''
+        INPUT: int
+        OUTPUT: None
+
+        Divides feature-label matrix into n_folds folds, saving each to, respectively,
+        X_train_folds, X_test_folds, y_all_train_folds, and y_all_test_folds.
+        To be used in n_folds-fold cross-validation.
+        '''
+
+        ''' 1. Pulls out X, y_all (y_all columns include all possible labels) '''
         self.n_folds = n_folds
         n_elems = self.feature_label_mat.shape[0]
         kf = cross_validation.KFold(n_elems, n_folds=n_folds)
         drop_from_X = self.poss_labels + ['participantID', 'date']
-
         self.features_used = self.feature_label_mat.drop(drop_from_X, axis=1).columns.values
         X = self.feature_label_mat.drop(drop_from_X, axis=1).values  # Need to use .values for KFold
         y_all = self.feature_label_mat[self.poss_labels].values   # Need to use .values for KFold
 
-        ''' 2. Define folds and save to lists'''
+        ''' 2. Defines folds and saves to lists'''
         for train_index, test_index in kf:
             X_train, X_test = X[train_index], X[test_index]
             y_all_train, y_all_test = y_all[train_index], y_all[test_index]
-
             self.X_train_folds.append(X_train)
             self.X_test_folds.append(X_test)
             self.y_all_train_folds.append(y_all_train)
@@ -234,7 +214,9 @@ class ModelTester(object):
         '''
         INPUT: dict of model --> string (e.g.,: {rfr: 'Random Forest Regressor', ...})
         OUTPUT: None
-        Fits and scores inputted models, printing out k-fold scores and average score
+
+        Fits and scores inputted models, printing out k-fold scores and average score.
+        Saves feature importances in feature_importances.
         '''
         self.models = models    # Mostly to save for future reference
         for model, descrip in models.iteritems():
@@ -262,22 +244,34 @@ class ModelTester(object):
             print "\n"
 
 if __name__ == '__main__':
+    ''' NOTE:
+    To run, may need to manually install the latest version of networkx:
+    Download the tar.gz or zip file from https://pypi.python.org/pypi/networkx/
+    (As of 1/15/2016: pip install may upgrade you to version 1.10, but you need 1.11)
+    '''
+
+    '''
+    [[PROVIDE BOOL TO NOT USE GRAPH FEATURES IN CASE OF ABOVE ISSUE]]
+    '''
+
     basic_call_sms_bt_features = True
     advanced_call_sms_bt_features = True
     other_features = True
 
 
     ''' Reads in files to use as features'''
-    feature_text_files = [
+    FEATURE_TEXT_FILES = [
                           "SMSLog.csv",
                           "CallLog.csv",
                           "Battery.csv",
                           "BluetoothProximity.csv"
                           ]
-    n_folds = 5
-    poss_labels = ['happy', 'stressed', 'productive']
+    N_FOLDS = 5
+    MIN_DATE = '2010-11-12'
+    MAX_DATE = '2011-05-21'
+    POSS_LABELS = ['happy', 'stressed', 'productive']
 
-    poss_labels += ['happy_dummy', 'very_happy', 'very_unhappy']
+    POSS_LABELS += ['happy_dummy', 'very_happy', 'very_unhappy']
     # for label in poss_labels:
     #     dummy_name = label + '_dummy'
     #     very_name = 'very_' + label
@@ -287,15 +281,15 @@ if __name__ == '__main__':
 
 
     #feature_dfs = [df_SMSLog, df_CallLog], df_Battery]
-    mt = ModelTester(feature_text_files)
+    mt = ModelTester(FEATURE_TEXT_FILES)
 
-    mt.create_feature_label_mat(poss_labels, Fri_weekend=True, keep_dow=True,\
-                                basic_call_sms_bt_features, advanced_call_sms_bt_features, other_features)
+    mt.create_feature_label_mat(POSS_LABELS, basic_call_sms_bt_features, advanced_call_sms_bt_features, \
+                                other_features,  MIN_DATE, MAX_DATE, Fri_weekend=True, keep_dow=True)
 
 
     ''' ****************************************************************** '''
 
-    mt.create_cv_pipeline(n_folds)
+    mt.create_cv_pipeline(N_FOLDS)
 
 
     ''' Defines models '''
@@ -376,10 +370,6 @@ if __name__ == '__main__':
 
 
 
-
-    ''' 1/6/16: NEED TO DO FOR CROSS-VALIDATION TO BE VALID
-    2. Before train-test split, sort on date?
-    '''
 
 
 # ''' create_feature_label_mat *************************************** '''
