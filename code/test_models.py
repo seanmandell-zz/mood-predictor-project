@@ -12,15 +12,22 @@ from feature_engineer import engineer, _daily_stats_most_freq
 import networkx as nx
 
 class ModelTester(object):
-    def __init__(self, feature_text_files):
+    def __init__(self, feature_text_files, to_dummyize, very_cutoff_inclusive=6, very_un_cutoff_inclusive=2):
         '''
-        INPUT: list of strings
+        INPUT: list of strings, list of strings, int, int
+            - feature_text_files: names of CSV files containing features data
+            - to_dummyize: names of moods (happy, stressed, productive) to create dummies for
+            - very_cutoff_inclusive: min number for the "very" dummies to be set to 1
+            - very_un_cutoff_inclusive: max number for the "very_un" dummies to be set to 1
         OUTPUT: None
 
         Class constructor.
+        Creates all labels, each of which the model will individually attempt to predict.
+        Reads CSV files specified by feature_text_files as DataFrames.
         '''
         self.feature_dfs = {}
-        self.df_labels = create_poss_labels('SurveyFromPhone.csv')
+        self.df_labels = create_poss_labels('SurveyFromPhone.csv', to_dummyize, \
+                                            very_cutoff_inclusive, very_un_cutoff_inclusive)
         self.feature_label_mat = None
         self.models = {}
         self.X_train_folds, self.X_test_folds, self.y_all_train_folds, self.y_all_test_folds = [], [], [], []
@@ -37,7 +44,7 @@ class ModelTester(object):
 
     def _limit_dates(self, min_date='2010-11-12', max_date='2011-05-21'):
         '''
-        INPUT: DataFrame with local_time column, string, string, string
+        INPUT: String, string
         OUTPUT: None
 
         Keeps observations within [min_date, max_date], inclusive (where a day is defined as 4 AM to 4 AM the next day).
@@ -54,6 +61,8 @@ class ModelTester(object):
                 df = df[df['local_time'].dt.hour >= 7] # Per Friends and Family paper (8.2.1), removes b/n midnight and 7 AM
             elif df_name == 'df_Battery':
                 df = df.rename(columns={'date': 'local_time'})
+            elif df_name == 'df_AppRunning':
+                df = df.rename(columns={'scantime': 'local_time'})
 
             df['local_time'] = pd.DatetimeIndex(pd.to_datetime(df['local_time']))
             df.loc[df['local_time'].dt.hour < 4, 'local_time'] = (pd.DatetimeIndex(df[df['local_time'].dt.hour < 4]['local_time']) - \
@@ -89,14 +98,11 @@ class ModelTester(object):
                         self.feature_label_mat.loc[pd.isnull(self.feature_label_mat[col]), col] = \
                                                             self.feature_label_mat[col].map(median_dict)
 
-
-
     def _create_demedianed_cols(self):
         '''
         INPUT: None
         OUTPUT: None
         Creates new "de-medianed" feature columns using each participant's median for each existing
-         (Doubles number of feature columns.)
         '''
         all_cols = list(self.feature_label_mat.columns.values)
         cols_to_remove = self.poss_labels + ['participantID', 'date']
@@ -128,7 +134,7 @@ class ModelTester(object):
             self.feature_label_mat.drop('day_of_week', axis=1, inplace=True)
 
     def create_feature_label_mat(self, poss_labels, basic_call_sms_bt_features, advanced_call_sms_bt_features, \
-                                 other_features, min_date, max_date, Fri_weekend=True, keep_dow=False):
+                                 other_features, min_date, max_date, create_demedianed=False, Fri_weekend=True, keep_dow=False):
         '''
         INPUT: list of strings, int, bool, bool
         OUTPUT: None
@@ -149,38 +155,32 @@ class ModelTester(object):
                 self.feature_dfs[name] = engineer(name, feature_df, basic_call_sms_bt_features, \
                                                   advanced_call_sms_bt_features, other_features)
 
-
         ''' Merges features and labels into one DataFrame'''
         for feature_df in self.feature_dfs.itervalues():
             self.df_labels = self.df_labels.merge(feature_df, how='left', on=['participantID', 'date'])
-        #self.df_labels = self.df_labels.merge(network_df, how='left', on=['participantID', 'date'])
         self.feature_label_mat = self.df_labels
 
-        ''' NEW: drops rows where participantID is null '''
         mt.feature_label_mat = mt.feature_label_mat[pd.notnull(mt.feature_label_mat['participantID'])]
-
-        ''' Fills in missing values as appropriate '''
         self._fill_na()
 
-        ''' Drops 'cnt nan' column if it exists '''
-        if list(self.feature_label_mat.columns).count('cnt nan') > 0:
+
+        if list(self.feature_label_mat.columns).count('cnt nan') > 0:   #Drops 'cnt nan' column if it exists
             self.feature_label_mat.drop('cnt nan', axis=1, inplace=True)
 
-        ''' Creates new columns with differences from each user's median value (for *all* feature columns)'''
-        ''' Note (1/11/16): including demedianed doesn't seem to help, and may slightly hurt, AdaBoost '''
-        #self._create_demedianed_cols()
-
-        ''' NEW: fills the few remaining null values with 0 '''
+        if create_demedianed:
+            self._create_demedianed_cols()
         self.feature_label_mat.fillna(0, inplace=True)
 
         ''' Adds a dummy 'weekend', 1 for Sat/Sun (and Fri if Fri_weekend=True), 0 otherwise '''
         self._add_weekend_col(Fri_weekend=Fri_weekend, keep_dow=keep_dow)
 
-        ''' Drops 'index' column if it exists '''
-        if list(self.feature_label_mat.columns).count('index') > 0:
+
+        if list(self.feature_label_mat.columns).count('index') > 0:    #Drops 'index' column if it exists
             self.feature_label_mat.drop('index', axis=1, inplace=True)
 
 
+    ''' Note to Giovanna: I don't think create_cv_pipeline is necessary any longer,
+    and plan on removing it this weekend. '''
     def create_cv_pipeline(self, n_folds):
         '''
         INPUT: int
@@ -251,46 +251,48 @@ if __name__ == '__main__':
     '''
 
     '''
-    [[PROVIDE BOOL TO NOT USE GRAPH FEATURES IN CASE OF ABOVE ISSUE]]
+    [[NOTE TO SELF: PROVIDE BOOL TO NOT USE GRAPH FEATURES IN CASE OF ABOVE ISSUE]]
     '''
 
-    basic_call_sms_bt_features = True
-    advanced_call_sms_bt_features = True
-    other_features = True
 
+    ''' 1. FIELDS TO POTENTIALLY MODIFY ************************************* '''
+    basic_call_sms_bt_features = True   # Whether to include basic Call/SMS/Bluetooth features
+    advanced_call_sms_bt_features = True    # Whether to include advanced Call/SMS/Bluetooth features
+    other_features = True   # Whether to include features not related to Call/SMS/Bluetooth (eg, Battery)
+    N_FOLDS = 5   # Number of folds to use in cross-validation
+    TO_DUMMYIZE = ['happy']    # Mood(s) to create dummies with: happy, stressed, and/or productive
+    MODELS_TO_USE = [   # Which models to test. Scroll to bottom for descriptions of each
+            #   rfr,
+            #   dtr,
+            #   abr25,
+            #   abr50,
+            #   abr100,
+            #   abr50_squareloss,
+            #   abr50_exploss,
+              gbr#,
+            #   gbr_stoch,
+              #rfc,
+              #gbc
+            ]
+    ''' ********************************************************************* '''
 
-    ''' Reads in files to use as features'''
+    ''' 2. FIELDS TO PROBABLY LEAVE ALONE *********************************** '''
+    ''' Files to use as features'''
     FEATURE_TEXT_FILES = [
                           "SMSLog.csv",
                           "CallLog.csv",
                           "Battery.csv",
                           "BluetoothProximity.csv"
                           ]
-    N_FOLDS = 5
+    POSS_LABELS = ['happy', 'stressed', 'productive']
     MIN_DATE = '2010-11-12'
     MAX_DATE = '2011-05-21'
-    POSS_LABELS = ['happy', 'stressed', 'productive']
 
-    POSS_LABELS += ['happy_dummy', 'very_happy', 'very_unhappy']
-    # for label in poss_labels:
-    #     dummy_name = label + '_dummy'
-    #     very_name = 'very_' + label
-    #     very_un_name = 'very_un' + label
-    #     poss_labels += [dummy_name, very_name, very_un_name]
-
-
-
-    #feature_dfs = [df_SMSLog, df_CallLog], df_Battery]
-    mt = ModelTester(FEATURE_TEXT_FILES)
-
-    mt.create_feature_label_mat(POSS_LABELS, basic_call_sms_bt_features, advanced_call_sms_bt_features, \
-                                other_features,  MIN_DATE, MAX_DATE, Fri_weekend=True, keep_dow=True)
-
-
-    ''' ****************************************************************** '''
-
-    mt.create_cv_pipeline(N_FOLDS)
-
+    for label in TO_DUMMYIZE:
+        dummy_name = label + '_dummy'
+        very_name = 'very_' + label
+        very_un_name = 'very_un' + label
+        POSS_LABELS += [dummy_name, very_name, very_un_name]
 
     ''' Defines models '''
     ''' Regressors '''
@@ -298,16 +300,14 @@ if __name__ == '__main__':
     dtr = DecisionTreeRegressor(max_depth=10)
     abr25 = AdaBoostRegressor(n_estimators=25)
     abr50 = AdaBoostRegressor(n_estimators=50) # Default
-    #abr100 = AdaBoostRegressor(n_estimators=100)
+    abr100 = AdaBoostRegressor(n_estimators=100)
     abr50_squareloss = AdaBoostRegressor(n_estimators=50, loss='square')
     abr50_exploss = AdaBoostRegressor(n_estimators=50, loss='exponential')
     gbr = GradientBoostingRegressor()
     gbr_stoch = GradientBoostingRegressor(subsample=0.1) # Default n_estimators (100) much better than 500
-
     ''' Classifiers '''
     rfc = RandomForestClassifier(n_jobs=-1, random_state=42)
     gbc = GradientBoostingClassifier()
-
 
     ''' Loads up {model-->description} dictionary to pass into fit_score_models '''
     descrips_all = {}
@@ -324,126 +324,21 @@ if __name__ == '__main__':
     descrips_all[rfc] = 'rfc -- Random Forest Classifier'
     descrips_all[gbc] = 'gbc -- Gradient Boosting Classifier'
 
-    #models_all = [rfr, rfc, dtr, abr25, abr50, abr100, abr50_squareloss, abr50_exploss, gbr, gbr_stoch]
-
-    ''' Defines which models to test '''
     model_descrip_dict = {}
-    models_to_use = [
-            #   rfr,
-            #   dtr,
-            #   abr25,
-            #   abr50,
-            #   abr100,
-            #   abr50_squareloss,
-            #   abr50_exploss,
-              gbr#,
-            #   gbr_stoch,
-
-              #rfc,
-              #gbc
-            ]
-    for model in models_to_use:
+    for model in MODELS_TO_USE:
         model_descrip_dict[model] = descrips_all[model]
+    ''' ********************************************************************* '''
 
+
+    ''' 3. Runs the model tester ******************************************** '''
+    mt = ModelTester(FEATURE_TEXT_FILES, TO_DUMMYIZE)
+    mt.create_feature_label_mat(POSS_LABELS, basic_call_sms_bt_features, advanced_call_sms_bt_features, \
+                                other_features,  MIN_DATE, MAX_DATE, Fri_weekend=True, keep_dow=True)
+    mt.create_cv_pipeline(N_FOLDS)
     mt.fit_score_models(model_descrip_dict)
 
-
-
-
-
-
-
-    ''' AdaBoost: 50 (n_est) seems to do slightly (but definitely) better than 100, and maybe better than 25 '''
-
-    # mt.fit_score_models(rfr)
-    # #mt.fit_score_models(rfc)
-    # mt.fit_score_models(dtr)
-    # mt.fit_score_models(abr50)
-    # mt.fit_score_models(abr50_squareloss)
-    # mt.fit_score_models(abr50_exploss)
-    #
-    # # print "\n\nFitting, scoring AdaBoost Regressor, 100 estimators: "
-    # # mt.fit_score_models(abr100)
-    # mt.fit_score_models(abr25)
-    # mt.fit_score_models(gbr)
-    # mt.fit_score_models(gbr_stoch)
-
-
-
-
-
-# ''' create_feature_label_mat *************************************** '''
-# day_offset=0
-# Fri_weekend=True
-# keep_dow=True
-#
-# mt.poss_labels = poss_labels
-#
-# ''' Engineers features'''
-# for name, feature_df in mt.feature_dfs.iteritems():
-#     mt.feature_dfs[name] = engineer(name, feature_df, day_offset)
-#
-# ''' Merges features and labels into one DataFrame'''
-# for feature_df in mt.feature_dfs.itervalues():
-#     mt.df_labels = mt.df_labels.merge(feature_df, how='left', on=['participantID', 'date'])
-# mt.feature_label_mat = mt.df_labels
-#
-#
-# ''' NEW: drops rows where participantID is null '''
-# mt.feature_label_mat = mt.feature_label_mat[pd.notnull(mt.feature_label_mat['participantID'])]
-#
-#
-#
-#
-# ''' Fills in missing values as appropriate '''
-# mt._fill_na()
-#
-# ''' Drops 'cnt nan' column if it exists '''
-# if list(mt.feature_label_mat.columns).count('cnt nan') > 0:
-#     mt.feature_label_mat.drop('cnt nan', axis=1, inplace=True)
-#
-#
-# ''' Creates new columns with differences from each user's median value (for *all* feature columns)'''
-# mt._create_demedianed_cols()
-#
-#
-#
-#
-# ''' NEW: fills the few remaining null values with 0 '''
-# mt.feature_label_mat.fillna(0, inplace=True)
-#
-# ''' end  create_feature_label_mat *************************************** '''
-
-
-
-
+    ''' ********************************************************************* '''
 
     # ''' Example; may not want to use this method, though '''
     # clf = svm.SVC(kernel='linear', C=1)
     # scores = cross_validation.cross_val_score(clf, iris.data, iris.target, cv=5, scoring='f1_weighted')
-    #
-    #
-    # '''
-    # 1/6/16 notes on cross-validating/scoring preliminary model
-    #     1. Need to iterate over:
-    #         (a) 6 possible labels
-    #         (b) different scorings
-    # '''
-    #
-    #
-    # '''
-    # NOTES--Cross-Validating and Keeping Track of All Possible Variations
-    # 1. Will create different possible models which are different along:
-    #    (a) Model type (random forest, SVM, etc.)
-    #    (b) Features (could call 1, 2, 3, in increasing complexity)
-    #    (c) Label (happy, calm, stressed, sad, angry, onlypos)
-    #
-    #    Will want to:
-    #    (a) Pickle each (trained) model
-    #    (b) Store cross-validated scores
-    #    (c) Store sample size trained on?
-    #
-    # 2. Train-test split: will create same splits to use on every model
-    #
-    # 3. Grid-search: may eventually want to grid search.
-    # '''

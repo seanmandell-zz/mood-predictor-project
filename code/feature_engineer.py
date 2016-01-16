@@ -5,42 +5,15 @@ from pandas.tseries.offsets import *
 import networkx as nx
 from networkx.convert_matrix import from_pandas_dataframe
 
-
-# def _limit_dates(df, min_date='2010-03-15', max_date='2010-09-05'):
-# def _limit_dates(df, date_col, min_date='2010-11-12', max_date='2011-05-21'):
-#     '''
-#     INPUT: DataFrame with local_time column, string, string, string
-#     OUTPUT: DataFrame, with local_time column replaced by date
-#     Helper function called by engineer_... functions.
-#     Keeps observations within [min_date, max_date], inclusive (where a day is defined as 4 AM to 4 AM the next day).
-#     '''
-#
-#
-#
-#
-#
-#
-#     df['local_time'] = pd.DatetimeIndex(pd.to_datetime(df['local_time']))
-#     df.loc[df['local_time'].dt.hour < 4, 'local_time'] = (pd.DatetimeIndex(df[df['local_time'].dt.hour < 4]['local_time']) - \
-#                                                          DateOffset(1))
-#
-#
-#     df['date'] = df['local_time'].dt.date
-#     df = df.drop('local_time', axis=1)
-#
-#     df = df[((df['date'] >= datetime.date(pd.to_datetime(min_date))) & \
-#              (df['date'] <= datetime.date(pd.to_datetime(max_date))))]
-#     return df
-
 def _calc_incoming_outgoing(df):
     '''
     INPUT: DataFrame with columns 'participantID.A', 'type', 'date' (and others)
     OUTPUT: DataFrame with columns participantID, date, sms_incoming, sms_outgoing, sms_diff
-                --> Need to rename if don't want SMS
-    Helper function called by engineer_sms and engineer_call.
-    Calculates counts of incoming and outgoing texts each day for each participant.
-    '''
+                --> Need to rename if don't want 'sms' in resulting columns
 
+    Calculates counts of incoming and outgoing texts each day for each participant.
+    Called by engineer_sms and engineer_call.
+    '''
     df['cnt'] = 1
     df = pd.DataFrame(df.groupby(['participantID.A', 'type', 'date'])['cnt'].count()).reset_index()
     df = df.set_index(['participantID.A', 'date', 'type'])
@@ -53,8 +26,14 @@ def _calc_incoming_outgoing(df):
     df['sms_total'] = df['sms_incoming'] + df['sms_outgoing']
     return df
 
-
 def _graph_centrality_measures(df):
+    '''
+    INPUT: DataFrame
+    OUTPUT: dict, dict, dict
+
+    For every participant, calculates degree centrality, Eigenvector centrality, and
+    weighted Eigenvector centrality (weighted by the df's 'mean_cnt' column).
+    '''
     df = df[df['participantID.A'] > df['participantID.B']]
     G = from_pandas_dataframe(df, 'participantID.A', 'participantID.B', 'mean_cnt')
 
@@ -85,7 +64,6 @@ def _totals_for_daily_stats(df, partic_name, target_name):
                                             right_on=[target_name, partic_name])
         df_network_merged['mean_cnt'] = df_network_merged.mean(axis=1)
         df_network_merged.rename(columns={partic_name+'_x': 'participantID.A', target_name+'_x': 'participantID.B'}, inplace=True)
-
 
     df_network_merged = df_network_merged[['participantID.A', 'participantID.B', 'mean_cnt']]
 
@@ -122,7 +100,6 @@ def _perday_for_daily_stats(df, df_totals, nickname):
     cols_to_drop = [nickname+'_top1', nickname+'_2_4', nickname+'_5_10', nickname+'_all', 'n_days_partic']
     df_totals.drop(cols_to_drop, axis=1, inplace=True)
     print nickname, "daily stats per-day columns created. Creating daily value columns..."
-
 
     ''' Per-day and percent columns--modifying df '''
     perday_cols = [nickname+'_top1_perday', nickname+'_2_4_perday', nickname+'_5_10_perday', nickname+'_all_perday']
@@ -166,39 +143,30 @@ def _daily_for_daily_stats(df, df_totals, nickname):
     return df
 
 
-''' TAKE OUT DEFAULT VALUES FOR ARGUMENTS '''
-''' Would be nice (and not too difficult) to have buckets customizable'''
+''' WILL TAKE OUT DEFAULT VALUES FOR ARGUMENTS '''
 def _daily_stats_most_freq(df, nickname, partic_name='participantID', target_name='participantID.B', add_centrality_chars=False):
     '''
-    INPUT:
-        --> Needs to be cleaned (not raw) (with 'date' column)
-    OUTPUT:
+    INPUT: DataFrame, string, string, string, bool
+        - nickname: string to prepend to new column names
+        - partic_name: name of participant column in df
+        - target_name: name of column the count of interactions with which are being tallied
+        - add_centrality_chars: whether to add 3 columns for measures of graph centrality
+    OUTPUT: DataFrame
 
+    For each participant in df, adds columns related to interactions with target_name
+    (which is likely another person but could also be, e.g., an app).
+    The sets of columns are:
+        (a) mean interactions per-day,
+        (b) actual daily interactions, and
+        (c) a percent calculated as (b) / (a)
+    If add_centrality_chars is set to True (should only be so for Bluetooth Proximity),
+    3 more columns with 3 centrality figures (over the whole dataset time period, not daily)
+    are added.
     '''
-
-
     df_totals = _totals_for_daily_stats(df, partic_name, target_name).sort(['participantID.A', 'mean_cnt'], ascending=False)
-
-    ''' Graph centrality measures for each participant'''
     if add_centrality_chars:
         degree_centrality, eigen_centrality, eigen_centrality_weighted = _graph_centrality_measures(df_totals)
-    # df_totals = _perday_for_daily_stats(df, df_totals, nickname)
     df, df_totals = _perday_for_daily_stats(df, df_totals, nickname)
-
-
-    # df = _daily_for_daily_stats(df, df_totals, nickname)
-
-
-
-
-    # ''' Per-day and percent columns '''
-    # perday_cols = [nickname+'_top1_perday', nickname+'_2_4_perday', nickname+'_5_10_perday', nickname+'_all_perday']
-    # dnm_collapsed = df_totals[perday_cols + ['participantID.A']].drop_duplicates()
-    # for col in perday_cols:
-    #     col_dict = dict(dnm_collapsed[['participantID.A', col]].set_index('participantID.A')[col])
-    #     df[col] = df['participantID'].map(col_dict)
-
-    ''' TRYING THIS AFTER THE ABOVE BLOCK (commented out on line ~183)'''
     df = _daily_for_daily_stats(df, df_totals, nickname)
 
     ''' Percent columns '''
@@ -207,11 +175,7 @@ def _daily_stats_most_freq(df, nickname, partic_name='participantID', target_nam
     df[nickname+'_5_10_pct'] = df[nickname+'_5_10'].astype(float) / df[nickname+'_5_10_perday']
     df[nickname+'_all_pct'] = df[nickname+'_all'].astype(float) / df[nickname+'_all_perday']
 
-
-
-
-
-
+    ''' Cleaning up '''
     df.drop(['participantID.B', 'address', 'cnt'], axis=1, inplace=True)
     df = df.drop_duplicates().reset_index()
     df = df[pd.notnull(df['participantID'])]
@@ -223,23 +187,22 @@ def _daily_stats_most_freq(df, nickname, partic_name='participantID', target_nam
         df.loc[:, 'eigen_centrality_weighted'] = df['participantID'].map(eigen_centrality_weighted)
 
     df.fillna(0, inplace=True)
-
     print nickname, "'s daily stats features engineered"
     return df
 
+
+
+
+''' INCOMPLETE FUNCTION; MAY DELETE'''
 def engineer_app(df):
     '''
     INPUT: DataFrame with raw App Running data
     OUTPUT: DataFrame--cleaned and engineered. Contains columns:
     '''
-    ''' Limits dates to relevant period'''
-    # df = df.rename(columns={'scantime': 'local_time'})
-    # df['local_time'] = pd.DatetimeIndex(pd.to_datetime(df['local_time']))
-    # df = _limit_dates(df)
 
-    ''' Engineers '''
     df['app'] = df['package'].map(lambda x: x.split('.')[-1])
     df = _daily_stats_most_freq(df, nickname='app', partic_name='participantID', target_name='app')
+
 
 
 
@@ -275,8 +238,6 @@ def engineer_bt(df):
 
     return df
 
-
-''' COULD GET RID OF THIS AND DIRECTLY CALL _calc_incoming_outgoing '''
 def engineer_sms(df):
     '''
     INPUT: DataFrame with raw SMS log data
@@ -291,7 +252,6 @@ def engineer_sms(df):
     df = _calc_incoming_outgoing(df)
     return df
 
-
 def engineer_call(df):
     '''
     INPUT: DataFrame with raw call log data
@@ -302,16 +262,9 @@ def engineer_call(df):
             - call_outgoing (count)
             - call_diff (count equaling (call_incoming-call_outgoing))
     '''
-
-    ''' Keeps observations within date range (where a day is defined as 4 AM to 4 AM the next day)'''
-    #df = _limit_dates(df)
-
     ''' Drops missed calls and strips + from outgoing+ and incoming+ '''
     df = df[df['type'] != 'missed']
-
     df['type'] = df['type'].map(lambda x: str(x).strip('+'))
-
-    ''' Calculates counts of incoming and outgoing texts each day for each participant '''
     df = _calc_incoming_outgoing(df)
     df = df.rename(columns={'sms_diff': 'call_diff', 'sms_incoming': 'call_incoming', \
                             'sms_outgoing': 'call_outgoing', 'sms_total': 'call_total'})
@@ -320,44 +273,28 @@ def engineer_call(df):
 def engineer_battery(df):
     '''
     INPUT: DataFrame with raw battery data
-    OUTPUT: DataFrame--cleaned and engineered. Contains columns:
-            - participantID
-            - date
-            - level
-            - plugged
-            - temperature
-            - voltage
-        These last 4 are all daily means for each participant.
+    OUTPUT: DataFrame
+
+    Cleans and engineers battery DataFrame. Contains columns:
+        - participantID
+        - date
+        - level_min, level_mean, level_max
+        - plugged_mean
+        - temperature_min, temperature_mean, temperature_max
+        - voltage_min, voltage_mean, voltage_max
     '''
-
-    #df = df.rename(columns={'date': 'local_time'})  # So can feed into _limit_dates
-    # print "df_Battery before limiting dates: df['date'].min() = ", df['date'].min()
-    # df = _limit_dates(df)
-    # print "df_Battery after limiting dates: df['date'].min() = ", df['date'].min()
     df.loc[df['plugged'] > 1, 'plugged'] = 1
-    #df = df.groupby(['participantID', 'date'])[['level', 'plugged', 'temperature', 'voltage']].mean().reset_index()
-
-
-    ''' Experimenting: gets min, mean, and max of 4 battery feature columns '''
     df_new = df[['participantID', 'date']].drop_duplicates().reset_index().drop('index', axis=1)
     min_mean_max_cols = ['level', 'plugged', 'temperature', 'voltage']
-    # new_cols = []
     for col in min_mean_max_cols:
         min_name = col + "_min"
         mean_name = col + "_mean"
         max_name = col + "_max"
-        #df[min_name] = df.groupby(['participantID', 'date'])[col].min()
         grouped = df.groupby(['participantID', 'date'])[col]
         df_new[min_name] = grouped.min().reset_index()[col]
         df_new[mean_name] = grouped.mean().reset_index()[col]
         df_new[max_name] = grouped.max().reset_index()[col]
-        # new_cols += [min_name, mean_name, max_name]
     df_new.drop(['plugged_min', 'plugged_max'], axis=1, inplace=True)
-
-    #df_new = df_new[new_cols]
-    #df = df.groupby(['participantID', 'date'])[['level', 'plugged', 'temperature', 'voltage']].mean().reset_index()
-    ''' end Experimenting '''
-
 
     return df_new
 
@@ -417,65 +354,3 @@ def engineer(name, feature_df, basic_call_sms_bt_features, advanced_call_sms_bt_
 #     df_Battery = engineer_battery(df_Battery)
 #     print "df_Battery engineered"
 #     return df_SMSLog, df_CallLog, df_Battery
-
-# def engineer_all(df_SMSLog, df_CallLog, df_Battery):
-#     '''
-#     INPUT: DataFrame, DataFrame, DataFrame
-#     OUTPUT: 3 DataFrames, engineered
-#     '''
-#
-#     ''' HERE, WANT TO ITERATE THROUGH LIST OF FEAT_DFS AND CALL engineer(feat_df),
-#     which itself will be a function calling the appropriate engineer function
-#     '''
-#
-#     df_SMSLog = engineer_sms(df_SMSLog)
-#     print "df_SMSLog engineered"
-#     df_CallLog = engineer_call(df_CallLog)
-#     print "df_CallLog engineered"
-#     df_Battery = engineer_battery(df_Battery)
-#     print "df_Battery engineered"
-#     return df_SMSLog, df_CallLog, df_Battery
-
-
-
-# if __name__ == '__main__':
-#
-#     all_text_files = ["Accel.csv",
-#                   "BluetoothProximity.csv",
-#                   "SMSLog.csv",
-#                   "AccelAccum.csv",
-#                   "CallLog.csv",
-#                   "SurveyBig5.csv",
-#                   "App.csv",
-#                   "SurveyCouples.csv",
-#                   "SurveyWeight.csv",
-#                   "AppRunning.csv",
-#                   "Location.csv",
-#                   "SurveyFriendship.csv",
-#                   "Battery.csv",
-#                   "SurveyFromPhone.csv"
-#                 ]
-#
-#     text_files = [
-#                   "SMSLog.csv",
-#                   "CallLog.csv",
-#                   "Battery.csv"
-#                   ]
-#
-#     for text_file in text_files:
-#         input_name = text_file
-#         df_name = "df_" + text_file.split('.')[0]
-#         globals()[df_name] = pd.read_csv(text_file)
-#
-#     '''Bluetooth data starts 7/10/10 (except a tiny amount in 1/2010, likely an error)'''
-#     #engineer_bt()
-#
-#
-#
-#     #read_in_as_dfs(text_files)
-#     print "finished read_in_as_dfs step"
-#     df_SMSLog, df_CallLog, df_Battery = engineer_all(df_SMSLog, df_CallLog, df_Battery)
-#
-#     # df_SMSLog = engineer_sms(df_SMSLog)
-#     # df_CallLog = engineer_call(df_CallLog)
-#     # df_Battery = engineer_battery(df_Battery)
