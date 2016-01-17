@@ -98,6 +98,8 @@ class ModelTester(object):
                         self.feature_label_mat.loc[pd.isnull(self.feature_label_mat[col]), col] = \
                                                             self.feature_label_mat[col].map(median_dict)
 
+
+
     def _create_demedianed_cols(self):
         '''
         INPUT: None
@@ -145,10 +147,12 @@ class ModelTester(object):
         ''' Engineers features'''
         # self.feature_dfs['df_network'] = engineer_bt_network(self.feature_dfs['df_BluetoothProximity'])
 
-        ''' CHANGE NAME OF df_network to be bt_daily or something like that'''
         df_bt = self.feature_dfs['df_BluetoothProximity']
-        df_advanced_bt_input = df_bt[pd.notnull(df_bt['participantID.B'])]
-        self.feature_dfs['df_network'] = _daily_stats_most_freq(df_advanced_bt_input, 'bt', partic_name='participantID', target_name='participantID.B', add_centrality_chars=True)
+        # df_advanced_bt_input = df_bt[pd.notnull(df_bt['participantID.B'])]
+        # self.feature_dfs['df_Bluetooth_adv'] = _daily_stats_most_freq(df_advanced_bt_input, 'bt', bidirectional=True, \
+        #                                 partic_name='participantID', target_name='participantID.B', add_centrality_chars=True)
+        self.feature_dfs['df_CallLog_adv'] = _daily_stats_most_freq(self.feature_dfs['df_CallLog'], 'call', bidirectional=False, \
+                                        partic_name='participantID.A', target_name='number.hash', add_centrality_chars=False)
 
         if basic_call_sms_bt_features:
             for name, feature_df in self.feature_dfs.iteritems():
@@ -261,6 +265,22 @@ if __name__ == '__main__':
     other_features = True   # Whether to include features not related to Call/SMS/Bluetooth (eg, Battery)
     N_FOLDS = 5   # Number of folds to use in cross-validation
     TO_DUMMYIZE = ['happy']    # Mood(s) to create dummies with: happy, stressed, and/or productive
+
+    ''' Defines models '''
+    ''' Regressors '''
+    rfr = RandomForestRegressor(n_jobs=-1, random_state=42)
+    dtr = DecisionTreeRegressor(max_depth=10)
+    abr25 = AdaBoostRegressor(n_estimators=25)
+    abr50 = AdaBoostRegressor(n_estimators=50) # Default
+    abr100 = AdaBoostRegressor(n_estimators=100)
+    abr50_squareloss = AdaBoostRegressor(n_estimators=50, loss='square')
+    abr50_exploss = AdaBoostRegressor(n_estimators=50, loss='exponential')
+    gbr = GradientBoostingRegressor()
+    gbr_stoch = GradientBoostingRegressor(subsample=0.1) # Default n_estimators (100) much better than 500
+    ''' Classifiers '''
+    rfc = RandomForestClassifier(n_jobs=-1, random_state=42)
+    gbc = GradientBoostingClassifier()
+
     MODELS_TO_USE = [   # Which models to test. Scroll to bottom for descriptions of each
             #   rfr,
             #   dtr,
@@ -294,20 +314,7 @@ if __name__ == '__main__':
         very_un_name = 'very_un' + label
         POSS_LABELS += [dummy_name, very_name, very_un_name]
 
-    ''' Defines models '''
-    ''' Regressors '''
-    rfr = RandomForestRegressor(n_jobs=-1, random_state=42)
-    dtr = DecisionTreeRegressor(max_depth=10)
-    abr25 = AdaBoostRegressor(n_estimators=25)
-    abr50 = AdaBoostRegressor(n_estimators=50) # Default
-    abr100 = AdaBoostRegressor(n_estimators=100)
-    abr50_squareloss = AdaBoostRegressor(n_estimators=50, loss='square')
-    abr50_exploss = AdaBoostRegressor(n_estimators=50, loss='exponential')
-    gbr = GradientBoostingRegressor()
-    gbr_stoch = GradientBoostingRegressor(subsample=0.1) # Default n_estimators (100) much better than 500
-    ''' Classifiers '''
-    rfc = RandomForestClassifier(n_jobs=-1, random_state=42)
-    gbc = GradientBoostingClassifier()
+
 
     ''' Loads up {model-->description} dictionary to pass into fit_score_models '''
     descrips_all = {}
