@@ -15,12 +15,10 @@ class FeatureEngineer(object):
         self.add_centrality_chars = add_centrality_chars
 
         if df_name == 'df_SMSLog':
-            #code
             self.nickname = 'sms'
             self.target = 'number.hash'
 
         elif df_name == 'df_CallLog':
-            #code
             self.nickname = 'call'
             self.df = self.df[self.df['type'] != 'missed']
             self.target = 'number.hash'
@@ -28,17 +26,14 @@ class FeatureEngineer(object):
                 self.df['type'] = self.df['type'].map(lambda x: str(x).strip('+'))
 
         elif df_name == 'df_BluetoothProximity':
-            #code
             self.nickname = 'bt'
             self.target = 'address'
             if advanced:
                 self.target = 'participantID.B'
                 self.df = self.df[pd.notnull(self.df['participantID.B'])]
         elif df_name == 'df_AppRunning':
-            #code
             self.nickname = 'app'
         elif df_name == 'df_Battery':
-            #code
             self.nickname = 'battery'
 
 
@@ -89,22 +84,41 @@ class FeatureEngineer(object):
         Returns df further cleaned:
         Note: calculates mean
         '''
-        self.df.loc[:, 'cnt'] = 1
+        df_totals = self.df.copy()
+        df_totals.loc[:, 'cnt'] = 1
 
-        # print "self.df.head(): \n", self.df.head(), "\n"
+        # print "df_totals.head(): \n", df_totals.head(), "\n"
         # print "partic_name: ", partic_name
         # print "target_name: ", target_name
 
-        self.df = self.df.groupby(['participantID', self.target])['cnt'].count().reset_index()
+        df_totals = df_totals.groupby(['participantID', self.target])['cnt'].count().reset_index()
 
         if self.df_name == 'df_BluetoothProximity':
-            df_network_cnts2 = self.df.copy()
-            self.df = self.df.merge(df_network_cnts2, left_on=['participantID', self.target],\
+            df_network_cnts2 = df_totals.copy()
+            df_totals = df_totals.merge(df_network_cnts2, left_on=['participantID', self.target],\
                                                 right_on=[self.target, 'participantID'])
-            self.df['cnt'] = self.df.mean(axis=1)
-            self.df.rename(columns={'participantID_x': 'participantID', self.target+'_x': self.target}, inplace=True)
+            df_totals['cnt'] = df_totals.mean(axis=1)
+            df_totals.rename(columns={'participantID_x': 'participantID', self.target+'_x': self.target}, inplace=True)
 
-        self.df = self.df[['participantID', self.target, 'cnt']]
+        df_totals = df_totals[['participantID', self.target, 'cnt']]
+        return df_totals
+
+        # self.df.loc[:, 'cnt'] = 1
+        #
+        # # print "self.df.head(): \n", self.df.head(), "\n"
+        # # print "partic_name: ", partic_name
+        # # print "target_name: ", target_name
+        #
+        # self.df = self.df.groupby(['participantID', self.target])['cnt'].count().reset_index()
+        #
+        # if self.df_name == 'df_BluetoothProximity':
+        #     df_network_cnts2 = self.df.copy()
+        #     self.df = self.df.merge(df_network_cnts2, left_on=['participantID', self.target],\
+        #                                         right_on=[self.target, 'participantID'])
+        #     self.df['cnt'] = self.df.mean(axis=1)
+        #     self.df.rename(columns={'participantID_x': 'participantID', self.target+'_x': self.target}, inplace=True)
+        #
+        # self.df = self.df[['participantID', self.target, 'cnt']]
 
 
     def _perday_for_daily_stats(self, df_totals):
@@ -171,10 +185,10 @@ class FeatureEngineer(object):
             mask_5_10dict = dict(df_temp[mask_5_10].groupby('date')['cnt'].count())
             all_dict = dict(df_temp.groupby('date')['cnt'].count())
 
-            self.df.loc[self.df['participantID'] == user, nickname+'_top1'] = self.df['date'].map(mask1_dict)
-            self.df.loc[self.df['participantID'] == user, nickname+'_2_4'] = self.df['date'].map(mask_2_4dict)
-            self.df.loc[self.df['participantID'] == user, nickname+'_5_10'] = self.df['date'].map(mask_5_10dict)
-            self.df.loc[self.df['participantID'] == user, nickname+'_all'] =  self.df['date'].map(all_dict)
+            self.df.loc[self.df['participantID'] == user, self.nickname+'_top1'] = self.df['date'].map(mask1_dict)
+            self.df.loc[self.df['participantID'] == user, self.nickname+'_2_4'] = self.df['date'].map(mask_2_4dict)
+            self.df.loc[self.df['participantID'] == user, self.nickname+'_5_10'] = self.df['date'].map(mask_5_10dict)
+            self.df.loc[self.df['participantID'] == user, self.nickname+'_all'] =  self.df['date'].map(all_dict)
         print "Daily value columns created."
 
 
@@ -240,7 +254,7 @@ class FeatureEngineer(object):
 
 
 
-    def engineer_bt(self, df):
+    def engineer_bt(self):
         '''
         INPUT: DataFrame with raw Bluetooth Proximity data
         OUTPUT: DataFrame--cleaned and engineered. Contains columns:
@@ -259,18 +273,17 @@ class FeatureEngineer(object):
         # df = df[df['local_time'].dt.hour >= 7]
         # df = _limit_dates(df)
 
-        temp_df_bt_n = df.groupby(['participantID', 'date'])['address'].count().reset_index()
+        temp_df_bt_n = self.df.groupby(['participantID', 'date'])['address'].count().reset_index()
         temp_df_bt_n = temp_df_bt_n.rename(columns={'address': 'bt_n'})
-        df['date'] = df['date'].map(lambda x: Timestamp(x))         # Necessary for merge
+        self.df['date'] = self.df['date'].map(lambda x: Timestamp(x))         # Necessary for merge
         temp_df_bt_n['date'] = temp_df_bt_n['date'].map(lambda x: Timestamp(x)) # Necessary for merge
-        temp_df_bt_n_distinct = df.groupby(['participantID', 'date'])['address'].nunique().reset_index()
+        temp_df_bt_n_distinct = self.df.groupby(['participantID', 'date'])['address'].nunique().reset_index()
         temp_df_bt_n_distinct = temp_df_bt_n_distinct.rename(columns={'address': 'bt_n_distinct'})
-        df = df.merge(temp_df_bt_n, how='left', on=['participantID', 'date'])
-        df = df.merge(temp_df_bt_n_distinct, how='left', on=['participantID', 'date'])
-        df = df[['participantID', 'date', 'bt_n', 'bt_n_distinct']]
-        df.drop_duplicates(inplace=True)
+        self.df = self.df.merge(temp_df_bt_n, how='left', on=['participantID', 'date'])
+        self.df = self.df.merge(temp_df_bt_n_distinct, how='left', on=['participantID', 'date'])
+        self.df = self.df[['participantID', 'date', 'bt_n', 'bt_n_distinct']]
+        self.df.drop_duplicates(inplace=True)
 
-        return df
 
     # def engineer_sms(self):
     #     '''
@@ -301,7 +314,7 @@ class FeatureEngineer(object):
     #     self._calc_incoming_outgoing()
 
 
-    def engineer_battery(self, df):
+    def engineer_battery(self):
         '''
         INPUT: DataFrame with raw battery data
         OUTPUT: DataFrame
@@ -314,20 +327,20 @@ class FeatureEngineer(object):
             - temperature_min, temperature_mean, temperature_max
             - voltage_min, voltage_mean, voltage_max
         '''
-        df.loc[df['plugged'] > 1, 'plugged'] = 1
-        df_new = df[['participantID', 'date']].drop_duplicates().reset_index().drop('index', axis=1)
+        self.df.loc[self.df['plugged'] > 1, 'plugged'] = 1
+        df_new = self.df[['participantID', 'date']].drop_duplicates().reset_index().drop('index', axis=1)
         min_mean_max_cols = ['level', 'plugged', 'temperature', 'voltage']
         for col in min_mean_max_cols:
             min_name = col + "_min"
             mean_name = col + "_mean"
             max_name = col + "_max"
-            grouped = df.groupby(['participantID', 'date'])[col]
+            grouped = self.df.groupby(['participantID', 'date'])[col]
             df_new[min_name] = grouped.min().reset_index()[col]
             df_new[mean_name] = grouped.mean().reset_index()[col]
             df_new[max_name] = grouped.max().reset_index()[col]
         df_new.drop(['plugged_min', 'plugged_max'], axis=1, inplace=True)
 
-        return df_new
+        self.df = df_new
 
     def engineer(self):
         '''
@@ -347,22 +360,15 @@ class FeatureEngineer(object):
 
 
 
+        if self.df_name == 'df_BluetoothProximity':
+            if not self.advanced:
+                self.engineer_bt()
+            else:
+                self._daily_stats_most_freq()
 
 
-
-        if basic_call_sms_bt_features:
-            if name == 'df_SMSLog':
-                feature_df = engineer_sms(feature_df)
-            elif name == 'df_CallLog':
-                feature_df = engineer_call(feature_df)
-            elif name == 'df_Battery':
-                feature_df = engineer_battery(feature_df)
-
-        if name == 'df_BluetoothProximity':
-            feature_df = engineer_bt(feature_df)
-
-
-
+        if self.df_name == 'df_Battery':
+            self.engineer_battery()
 
 
 

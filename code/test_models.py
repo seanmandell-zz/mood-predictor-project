@@ -8,11 +8,14 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, AdaB
                              GradientBoostingRegressor, GradientBoostingClassifier
 from sklearn.tree import DecisionTreeRegressor
 from create_labels import create_poss_labels
-from feature_engineer import engineer, _daily_stats_most_freq
+from feature_engineer import FeatureEngineer#engineer, _daily_stats_most_freq
 import networkx as nx
 
 class ModelTester(object):
-    def __init__(self, feature_text_files, to_dummyize, very_cutoff_inclusive=6, very_un_cutoff_inclusive=2):
+    def __init__(self, feature_text_files, poss_labels, to_dummyize, basic_features=True, \
+                 advanced_call_sms_bt_features=True, other_features=True, add_centrality_chars=True, \
+                 very_cutoff_inclusive=6, very_un_cutoff_inclusive=2, min_date='2010-11-12', \
+                 max_date='2011-05-21', create_demedianed=False, Fri_weekend=True, keep_dow=True):
         '''
         INPUT: list of strings, list of strings, int, int
             - feature_text_files: names of CSV files containing features data
@@ -25,13 +28,25 @@ class ModelTester(object):
         Creates all labels, each of which the model will individually attempt to predict.
         Reads CSV files specified by feature_text_files as DataFrames.
         '''
+        self.poss_labels = poss_labels
+        self.basic_features = basic_features
+        self.advanced_call_sms_bt_features = advanced_call_sms_bt_features
+        self.other_features = other_features
+        self.add_centrality_chars = add_centrality_chars
+        self.min_date = min_date
+        self.max_date = max_date
+        self.create_demedianed = create_demedianed
+        self.Fri_weekend = Fri_weekend
+        self.keep_dow = keep_dow
+
         self.feature_dfs = {}
         self.df_labels = create_poss_labels('SurveyFromPhone.csv', to_dummyize, \
                                             very_cutoff_inclusive, very_un_cutoff_inclusive)
+        print "Labels created"
         self.feature_label_mat = None
         self.models = {}
         self.X_train_folds, self.X_test_folds, self.y_all_train_folds, self.y_all_test_folds = [], [], [], []
-        self.poss_labels, self.n_folds = None, None
+        self.n_folds = None
         self.features_used = None
         self.feature_importances = []
 
@@ -40,9 +55,9 @@ class ModelTester(object):
             input_name = '../data/' + text_file
             df_name = "df_" + text_file.split('.')[0]
             self.feature_dfs[df_name] = pd.read_csv(input_name)
-        print "Labels created, feature dfs read in"
+        print "Feature dfs read in"
 
-    def _limit_dates(self, min_date='2010-11-12', max_date='2011-05-21'):
+    def _limit_dates(self):
         '''
         INPUT: String, string
         OUTPUT: None
@@ -69,8 +84,8 @@ class ModelTester(object):
                                                                  DateOffset(1))
             df['date'] = df['local_time'].dt.date
             df = df.drop('local_time', axis=1)
-            df = df[((df['date'] >= datetime.date(pd.to_datetime(min_date))) & \
-                     (df['date'] <= datetime.date(pd.to_datetime(max_date))))]
+            df = df[((df['date'] >= datetime.date(pd.to_datetime(self.min_date))) & \
+                     (df['date'] <= datetime.date(pd.to_datetime(self.max_date))))]
             self.feature_dfs[df_name] = df
 
     def _fill_na(self):
@@ -120,7 +135,7 @@ class ModelTester(object):
             self.feature_label_mat[new_col_name] = median_series
             self.feature_label_mat[new_col_name] = self.feature_label_mat[col] - self.feature_label_mat[new_col_name]
 
-    def _add_weekend_col(self, Fri_weekend=True, keep_dow=False):
+    def _add_weekend_col(self):
         '''
         INPUT: bool, bool
         OUTPUT: None
@@ -129,35 +144,54 @@ class ModelTester(object):
         - Also keeps day of week if keep_dow is True
         '''
         self.feature_label_mat.loc[:, 'day_of_week'] = self.feature_label_mat['date'].map(lambda x: x.dayofweek)
-        day_to_split = 5 - 1 * Fri_weekend
+        day_to_split = 5 - 1 * self.Fri_weekend
         self.feature_label_mat.loc[self.feature_label_mat['day_of_week'] >= day_to_split, 'weekend'] = 1
         self.feature_label_mat.loc[self.feature_label_mat['day_of_week'] < day_to_split, 'weekend'] = 0
-        if not keep_dow:
+        if not self.keep_dow:
             self.feature_label_mat.drop('day_of_week', axis=1, inplace=True)
 
-    def create_feature_label_mat(self, poss_labels, basic_call_sms_bt_features, advanced_call_sms_bt_features, \
-                                 other_features, min_date, max_date, create_demedianed=False, Fri_weekend=True, keep_dow=False):
+    def create_feature_label_mat(self):
         '''
         INPUT: list of strings, int, bool, bool
         OUTPUT: None
         Creates a feature-matrix DataFrame, and deals with missing values.
         '''
-        self.poss_labels = poss_labels
-        self._limit_dates(min_date, max_date)
+        self._limit_dates()
         ''' Engineers features'''
         # self.feature_dfs['df_network'] = engineer_bt_network(self.feature_dfs['df_BluetoothProximity'])
 
-        df_bt = self.feature_dfs['df_BluetoothProximity']
-        # df_advanced_bt_input = df_bt[pd.notnull(df_bt['participantID.B'])]
-        # self.feature_dfs['df_Bluetooth_adv'] = _daily_stats_most_freq(df_advanced_bt_input, 'bt', bidirectional=True, \
-        #                                 partic_name='participantID', target_name='participantID.B', add_centrality_chars=True)
-        self.feature_dfs['df_CallLog_adv'] = _daily_stats_most_freq(self.feature_dfs['df_CallLog'], 'call', bidirectional=False, \
-                                        partic_name='participantID.A', target_name='number.hash', add_centrality_chars=False)
 
-        if basic_call_sms_bt_features:
-            for name, feature_df in self.feature_dfs.iteritems():
-                self.feature_dfs[name] = engineer(name, feature_df, basic_call_sms_bt_features, \
-                                                  advanced_call_sms_bt_features, other_features)
+        for df_name, df in self.feature_dfs.iteritems():
+            if self.basic_features:
+                #(self, df, df_name, advanced=False, add_centrality_chars=False)
+                fe = FeatureEngineer(df, df_name)
+                self.feature_dfs[df_name] = fe.engineer()
+            if self.advanced_call_sms_bt_features:   # Available for CallLog, SMSLog, BluetoothProximity
+                if (df_name == 'df_CallLog' or df_name == 'df_SMSLog' or df_name == 'df_BluetoothProximity'):
+                    if self.add_centrality_chars and df_name == 'df_BluetoothProximity':
+                        fe = FeatureEngineer(df, df_name, advanced=True, add_centrality_chars=True)
+                    else:
+                        fe = FeatureEngineer(df, df_name, advanced=True)
+                    df_newname = df_name + '_advanced'
+                    self.feature_dfs[df_newname] = fe.engineer()
+
+
+        ''' WILL PROBABLY DELETE MOST/ALL OF THIS BLOCK ***********************************************'''
+        # df_bt = self.feature_dfs['df_BluetoothProximity']
+        # # df_advanced_bt_input = df_bt[pd.notnull(df_bt['participantID.B'])]
+        # # self.feature_dfs['df_Bluetooth_adv'] = _daily_stats_most_freq(df_advanced_bt_input, 'bt', bidirectional=True, \
+        # #                                 partic_name='participantID', target_name='participantID.B', add_centrality_chars=True)
+        # self.feature_dfs['df_CallLog_adv'] = _daily_stats_most_freq(self.feature_dfs['df_CallLog'], 'call', bidirectional=False, \
+        #                                 partic_name='participantID.A', target_name='number.hash', add_centrality_chars=False)
+        #
+        # if self.basic_features:
+        #     for name, feature_df in self.feature_dfs.iteritems():
+        #         self.feature_dfs[name] = engineer(name, feature_df, basic_features, \
+        #                                           advanced_call_sms_bt_features, other_features)
+        ''' ******************************************************************************************* '''
+
+
+
 
         ''' Merges features and labels into one DataFrame'''
         for feature_df in self.feature_dfs.itervalues():
@@ -171,12 +205,12 @@ class ModelTester(object):
         if list(self.feature_label_mat.columns).count('cnt nan') > 0:   #Drops 'cnt nan' column if it exists
             self.feature_label_mat.drop('cnt nan', axis=1, inplace=True)
 
-        if create_demedianed:
+        if self.create_demedianed:
             self._create_demedianed_cols()
         self.feature_label_mat.fillna(0, inplace=True)
 
         ''' Adds a dummy 'weekend', 1 for Sat/Sun (and Fri if Fri_weekend=True), 0 otherwise '''
-        self._add_weekend_col(Fri_weekend=Fri_weekend, keep_dow=keep_dow)
+        self._add_weekend_col()
 
 
         if list(self.feature_label_mat.columns).count('index') > 0:    #Drops 'index' column if it exists
@@ -260,11 +294,33 @@ if __name__ == '__main__':
 
 
     ''' 1. FIELDS TO POTENTIALLY MODIFY ************************************* '''
-    basic_call_sms_bt_features = True   # Whether to include basic Call/SMS/Bluetooth features
+    basic_features = True
     advanced_call_sms_bt_features = True    # Whether to include advanced Call/SMS/Bluetooth features
-    other_features = True   # Whether to include features not related to Call/SMS/Bluetooth (eg, Battery)
+    #other_features = True   # Whether to include features not related to Call/SMS/Bluetooth (eg, Battery)
     N_FOLDS = 5   # Number of folds to use in cross-validation
     TO_DUMMYIZE = ['happy']    # Mood(s) to create dummies with: happy, stressed, and/or productive
+    FEATURE_TEXT_FILES = [
+                          "SMSLog.csv",
+                          "CallLog.csv",
+                          "Battery.csv",
+                          "BluetoothProximity.csv"
+                          ]
+
+
+
+    ''' FINISH THIS ************************************************************************** '''
+    ''' MODEL TESTER INIT: '''
+    # (self, feature_text_files, poss_labels, to_dummyize, basic_features=True, \
+    #          advanced_call_sms_bt_features=True, other_features=True, very_cutoff_inclusive=6, very_un_cutoff_inclusive=2, \
+    #          min_date='2010-11-12', max_date='2011-05-21', create_demedianed=False, Fri_weekend=True, keep_dow=True)
+
+    ''' *********************************************************************************** '''
+
+
+
+
+
+
 
     ''' Defines models '''
     ''' Regressors '''
@@ -298,12 +354,7 @@ if __name__ == '__main__':
 
     ''' 2. FIELDS TO PROBABLY LEAVE ALONE *********************************** '''
     ''' Files to use as features'''
-    FEATURE_TEXT_FILES = [
-                          "SMSLog.csv",
-                          "CallLog.csv",
-                          "Battery.csv",
-                          "BluetoothProximity.csv"
-                          ]
+
     POSS_LABELS = ['happy', 'stressed', 'productive']
     MIN_DATE = '2010-11-12'
     MAX_DATE = '2011-05-21'
@@ -338,9 +389,9 @@ if __name__ == '__main__':
 
 
     ''' 3. Runs the model tester ******************************************** '''
-    mt = ModelTester(FEATURE_TEXT_FILES, TO_DUMMYIZE)
-    mt.create_feature_label_mat(POSS_LABELS, basic_call_sms_bt_features, advanced_call_sms_bt_features, \
-                                other_features,  MIN_DATE, MAX_DATE, Fri_weekend=True, keep_dow=True)
+    mt = ModelTester(FEATURE_TEXT_FILES, POSS_LABELS, TO_DUMMYIZE, basic_features, \
+                     advanced_call_sms_bt_features)
+    mt.create_feature_label_mat()
     mt.create_cv_pipeline(N_FOLDS)
     mt.fit_score_models(model_descrip_dict)
 
