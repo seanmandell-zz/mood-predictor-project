@@ -6,13 +6,25 @@ import networkx as nx
 from networkx.convert_matrix import from_pandas_dataframe
 
 class FeatureEngineer(object):
-    def __init__(self, df, df_name, advanced=False, add_centrality_chars=False):#, target, ):
+    def __init__(self, df, df_name, advanced=False, add_centrality_chars=False):
+        '''
+        INPUT: DataFrame, string, bool, bool
+            - df: The DataFrame to engineer.
+            - df_name: The name of the DataFrame. Should be df_SMSLog, df_CallLog, df_BluetoothProximity,
+                       df_AppRunning, or df_Battery.
+            - advanced: Whether to call _daily_stats_most_freq to create the advanced features.
+                        Available for df_SMSLog, df_CallLog, df_BluetoothProximity.
+            - add_centrality_chars: If advanced=True, whether to add in graph centrality measures
+                                    for each participant using Bluetooth data.
+        OUTPUT: None
 
-
+        Class constructor.
+        '''
         self.df = df
         self.df_name = df_name
-        self.advanced = advanced    # 0=basic, 1=advanced
+        self.advanced = advanced    # False-->engineer basic features, True-->advanced
         self.add_centrality_chars = add_centrality_chars
+        self.init_cols = list(df.columns.values)
 
         if df_name == 'df_SMSLog':
             self.nickname = 'sms'
@@ -31,11 +43,8 @@ class FeatureEngineer(object):
             if advanced:
                 self.target = 'participantID.B'
                 self.df = self.df[pd.notnull(self.df['participantID.B'])]
-        elif df_name == 'df_AppRunning':
-            self.nickname = 'app'
-        elif df_name == 'df_Battery':
+        elif df_name == 'df_Battery':   # No 'target' attribute, because adv. features N/A for battery
             self.nickname = 'battery'
-
 
     def _calc_incoming_outgoing(self):
         '''
@@ -62,35 +71,34 @@ class FeatureEngineer(object):
         OUTPUT: dict, dict, dict
 
         For every participant, calculates degree centrality, Eigenvector centrality, and
-        weighted Eigenvector centrality (weighted by the df's 'cnt' column).
+        weighted Eigenvector centrality (the last being weighted by the df's 'cnt' column).
         '''
         df = df_totals.copy()
         df = df[df['participantID'] > df['participantID.B']]
         G = from_pandas_dataframe(df, 'participantID', 'participantID.B', 'cnt')
-
         degree_centrality = nx.degree_centrality(G)
         eigen_centrality = nx.eigenvector_centrality(G)
         eigen_centrality_weighted = nx.eigenvector_centrality(G, weight='cnt')
 
         return degree_centrality, eigen_centrality, eigen_centrality_weighted
 
-    '''
-    TO GENERALIZE
-    Need to make calculating the mean of both directions optional
-    '''
     def _totals_for_daily_stats(self):
         '''
-        Input: cleaned (date-limited, etc.) df
-        Returns df further cleaned:
-        Note: calculates mean
+        INPUT: None
+        OUTPUT: DataFrame
+
+        Helper function called by _daily_stats_most_freq.
+        Returns a DataFrame with columns:
+            - participantID
+            - self.target (e.g., 'participantID.B')
+            - 'cnt'
+        --> 'cnt' is the total number of interactions (calls, texts, etc.) b/n participantID
+            and self.target over the whole dataset.
+            In the case of Bluetooth data, which is limited here to interactions between study
+            participants, it's the mean number of interactions registered on either party's phone.
         '''
         df_totals = self.df.copy()
         df_totals.loc[:, 'cnt'] = 1
-
-        # print "df_totals.head(): \n", df_totals.head(), "\n"
-        # print "partic_name: ", partic_name
-        # print "target_name: ", target_name
-
         df_totals = df_totals.groupby(['participantID', self.target])['cnt'].count().reset_index()
 
         if self.df_name == 'df_BluetoothProximity':
@@ -100,34 +108,15 @@ class FeatureEngineer(object):
             df_totals['cnt'] = df_totals.mean(axis=1)
             df_totals.rename(columns={'participantID_x': 'participantID', self.target+'_x': self.target}, inplace=True)
 
-        df_totals = df_totals[['participantID', self.target, 'cnt']]
-        return df_totals
-
-        # self.df.loc[:, 'cnt'] = 1
-        #
-        # # print "self.df.head(): \n", self.df.head(), "\n"
-        # # print "partic_name: ", partic_name
-        # # print "target_name: ", target_name
-        #
-        # self.df = self.df.groupby(['participantID', self.target])['cnt'].count().reset_index()
-        #
-        # if self.df_name == 'df_BluetoothProximity':
-        #     df_network_cnts2 = self.df.copy()
-        #     self.df = self.df.merge(df_network_cnts2, left_on=['participantID', self.target],\
-        #                                         right_on=[self.target, 'participantID'])
-        #     self.df['cnt'] = self.df.mean(axis=1)
-        #     self.df.rename(columns={'participantID_x': 'participantID', self.target+'_x': self.target}, inplace=True)
-        #
-        # self.df = self.df[['participantID', self.target, 'cnt']]
-
+        return df_totals[['participantID', self.target, 'cnt']]
 
     def _perday_for_daily_stats(self, df_totals):
         '''
-        INPUT: DataFrame, DataFrame, string
+        INPUT: DataFrame
         OUTPUT: DataFrame
 
+        Helper function called by _daily_stats_most_freq.
         Adds columns to df_totals giving per-day stats for each bucket for every participant.
-        Called by _daily_stats_most_freq.
         '''
 
         nickname = self.nickname
@@ -163,11 +152,11 @@ class FeatureEngineer(object):
 
     def _daily_for_daily_stats(self, df_totals):
         '''
-        INPUT: DataFrame, DataFrame, string
-        OUTPUT: DataFrame
+        INPUT: DataFrame
+        OUTPUT: None
 
-        Adds columns to df, giving daily stats for each bucket for every participant.
-        Called by _daily_stats_most_freq.
+        Helper function called by _daily_stats_most_freq.
+        Adds columns to self.df, giving daily stats for each bucket for every participant.
         '''
         self.df.loc[:, 'cnt'] = 1
         for user in df_totals['participantID'].unique():
@@ -175,11 +164,11 @@ class FeatureEngineer(object):
             top1 = top10[:1]
             top_2_4 = top10[1:4]
             top_5_10 = top10[4:10]
+
             df_temp = self.df[self.df['participantID'] == user]
             mask1 = df_temp[self.target] == top1[0]
             mask_2_4 = df_temp[self.target].map(lambda x: top_2_4.count(x) > 0)
             mask_5_10 = df_temp[self.target].map(lambda x: top_5_10.count(x) > 0)
-
             mask1_dict = dict(df_temp[mask1].groupby('date')['cnt'].count())
             mask_2_4dict = dict(df_temp[mask_2_4].groupby('date')['cnt'].count())
             mask_5_10dict = dict(df_temp[mask_5_10].groupby('date')['cnt'].count())
@@ -192,15 +181,10 @@ class FeatureEngineer(object):
         print "Daily value columns created."
 
 
-    ''' WILL TAKE OUT DEFAULT VALUES FOR ARGUMENTS '''
     def _daily_stats_most_freq(self):
         '''
-        INPUT: DataFrame, string, string, string, bool
-            - nickname: string to prepend to new column names
-            - partic_name: name of participant column in df
-            - target_name: name of column the count of interactions with which are being tallied
-            - add_centrality_chars: whether to add 3 columns for measures of graph centrality
-        OUTPUT: DataFrame
+        INPUT: None
+        OUTPUT: None
 
         For each participant in df, adds columns related to interactions with target_name
         (which is likely another person but could also be, e.g., an app).
@@ -219,17 +203,19 @@ class FeatureEngineer(object):
         df_totals = self._perday_for_daily_stats(df_totals)
         self._daily_for_daily_stats(df_totals)
 
-        nickname = self.nickname
         ''' Percent columns '''
-        self.df[nickname+'_top1_pct'] = self.df[nickname+'_top1'].astype(float) / self.df[nickname+'_top1_perday']
-        self.df[nickname+'_2_4_pct'] = self.df[nickname+'_2_4'].astype(float) / self.df[nickname+'_2_4_perday']
-        self.df[nickname+'_5_10_pct'] = self.df[nickname+'_5_10'].astype(float) / self.df[nickname+'_5_10_perday']
-        self.df[nickname+'_all_pct'] = self.df[nickname+'_all'].astype(float) / self.df[nickname+'_all_perday']
+        nickname = self.nickname
+        self.df.loc[:, nickname+'_top1_pct'] = self.df[nickname+'_top1'].astype(float) / self.df[nickname+'_top1_perday']
+        self.df.loc[:, nickname+'_2_4_pct'] = self.df[nickname+'_2_4'].astype(float) / self.df[nickname+'_2_4_perday']
+        self.df.loc[:, nickname+'_5_10_pct'] = self.df[nickname+'_5_10'].astype(float) / self.df[nickname+'_5_10_perday']
+        self.df.loc[:, nickname+'_all_pct'] = self.df[nickname+'_all'].astype(float) / self.df[nickname+'_all_perday']
 
         ''' Cleaning up '''
-        self.df.drop(['participantID.B', 'address', 'cnt'], axis=1, inplace=True)
+        self.init_cols.remove('participantID')
+        self.init_cols.remove('date')
+        self.df.drop(self.init_cols, axis=1, inplace=True)
         self.df = self.df.drop_duplicates().reset_index()
-        self.df = self.df[pd.notnull(df['participantID'])]
+        self.df = self.df[pd.notnull(self.df['participantID'])]
 
         ''' Graph centrality characteristics '''
         if self.add_centrality_chars:
@@ -240,24 +226,12 @@ class FeatureEngineer(object):
         self.df.fillna(0, inplace=True)
         print self.nickname, "'s daily stats features engineered"
 
-
-    ''' INCOMPLETE FUNCTION; MAY DELETE'''
-    def engineer_app(self, df):
-        '''
-        INPUT: DataFrame with raw App Running data
-        OUTPUT: DataFrame--cleaned and engineered. Contains columns:
-        '''
-
-        df['app'] = df['package'].map(lambda x: x.split('.')[-1])
-        df = _daily_stats_most_freq(df, bidirectional=False, nickname='app', partic_name='participantID', target_name='app')
-
-
-
-
     def engineer_bt(self):
         '''
-        INPUT: DataFrame with raw Bluetooth Proximity data
-        OUTPUT: DataFrame--cleaned and engineered. Contains columns:
+        INPUT: None
+        OUTPUT: None
+
+        Engineers basic features for Bluetooth Proximity DataFrame. Contains columns:
                 - participantID
                 - date
                 - bt_n
@@ -265,13 +239,6 @@ class FeatureEngineer(object):
                 - bt_n_distinct
                     --> Number of distinct devices a participant is within BT proximity of each day
         '''
-
-        ''' Limits dates to relevant period; removes possibly erroneous nighttime observations'''
-        # df = df.rename(columns={'date': 'local_time'})
-        # df['local_time'] = pd.DatetimeIndex(pd.to_datetime(df['local_time']))
-        # ''' Per Friends and Family paper (8.2.1), removes b/n midnight and 7 AM '''
-        # df = df[df['local_time'].dt.hour >= 7]
-        # df = _limit_dates(df)
 
         temp_df_bt_n = self.df.groupby(['participantID', 'date'])['address'].count().reset_index()
         temp_df_bt_n = temp_df_bt_n.rename(columns={'address': 'bt_n'})
@@ -284,40 +251,10 @@ class FeatureEngineer(object):
         self.df = self.df[['participantID', 'date', 'bt_n', 'bt_n_distinct']]
         self.df.drop_duplicates(inplace=True)
 
-
-    # def engineer_sms(self):
-    #     '''
-    #     INPUT: DataFrame with raw SMS log data
-    #     OUTPUT: DataFrame--cleaned and engineered. Contains columns:
-    #             - participantID
-    #             - date
-    #             - sms_incoming (count)
-    #             - sms_outgoing (count)
-    #             - sms_diff (count equaling (sms_incoming-sms_outgoing))
-    #     Calls _calc_incoming_outgoing, which calculates counts of incoming and outgoing texts each day for each participant
-    #     '''
-    #     self._calc_incoming_outgoing()
-    #
-    # def engineer_call(self, df):
-    #     '''
-    #     INPUT: DataFrame with raw call log data
-    #     OUTPUT: DataFrame--cleaned and engineered. Contains columns:
-    #             - participantID
-    #             - date
-    #             - call_incoming (count)
-    #             - call_outgoing (count)
-    #             - call_diff (count equaling (call_incoming-call_outgoing))
-    #     '''
-    #     ''' Drops missed calls and strips + from outgoing+ and incoming+ '''
-    #     # df = df[df['type'] != 'missed']
-    #     # df['type'] = df['type'].map(lambda x: str(x).strip('+'))
-    #     self._calc_incoming_outgoing()
-
-
     def engineer_battery(self):
         '''
-        INPUT: DataFrame with raw battery data
-        OUTPUT: DataFrame
+        INPUT: None
+        OUTPUT: None
 
         Cleans and engineers battery DataFrame. Contains columns:
             - participantID
@@ -346,19 +283,17 @@ class FeatureEngineer(object):
         '''
         INPUT: None
         OUTPUT: DataFrame
-        Engineers a raw DataFrame and returns it.
-        --> name is the name of the raw DataFrame
-        'weekend' is a dummy var equal to 1 for Friday, Saturday, and Sunday
-        '''
 
-        if self.df_name == 'df_SMSLog' or self.df_name == 'df_CallLog':
-            self.df.rename(columns={'participantID.A': 'participantID'})
+        Engineers a raw DataFrame and returns it.
+        '''
+        if (self.df_name == 'df_SMSLog' or self.df_name == 'df_CallLog'):
+            self.df.rename(columns={'participantID.A': 'participantID'}, inplace=True)
+            self.init_cols.remove('participantID.A')
+            self.init_cols.append('participantID')
             if not self.advanced:
                 self._calc_incoming_outgoing()
             else:
                 self._daily_stats_most_freq()
-
-
 
         if self.df_name == 'df_BluetoothProximity':
             if not self.advanced:
@@ -366,13 +301,8 @@ class FeatureEngineer(object):
             else:
                 self._daily_stats_most_freq()
 
-
         if self.df_name == 'df_Battery':
             self.engineer_battery()
-
-
-
-
 
         ''' Converts 'date' column to Timestamp if necessary (so merge with df_labels works)'''
         if self.df['date'][0].__class__.__name__ != 'Timestamp':
@@ -383,26 +313,3 @@ class FeatureEngineer(object):
         else:
             print self.df_name + " advanced features engineered"
         return self.df
-
-
-    # def engineer_all(feature_dfs):
-    #     '''
-    #     INPUT: dict (k:v --> name:DataFrame)
-    #     OUTPUT: 3 DataFrames, engineered
-    #     '''
-    #     # engineered_feature_dfs = []
-    #     # for feature_df in feature_dfs:
-    #     #     engineered_feature_dfs.append(engineer(feature_df))
-    #     # return engineered_feature_dfs
-    #     #
-    #     # ''' HERE, WANT TO ITERATE THROUGH LIST OF FEAT_DFS AND CALL engineer(feat_df),
-    #     # which itself will be a function calling the appropriate engineer function
-    #     # '''
-    #
-    #     df_SMSLog = engineer_sms(df_SMSLog)
-    #     print "df_SMSLog engineered"
-    #     df_CallLog = engineer_call(df_CallLog)
-    #     print "df_CallLog engineered"
-    #     df_Battery = engineer_battery(df_Battery)
-    #     print "df_Battery engineered"
-    #     return df_SMSLog, df_CallLog, df_Battery

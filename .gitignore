@@ -4,6 +4,7 @@ data/
 .DS_Store
 Presentation Notes.md
 .gitignore
+Notes
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

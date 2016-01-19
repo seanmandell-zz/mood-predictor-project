@@ -18,18 +18,21 @@ def _read_clean(fname):
     df_mood_qs = df_mood_qs[((df_mood_qs['answers_len'] >= 42) & (df_mood_qs['answers_len'] <= 44))] # sic
     return df_mood_qs
 
-def _extract_mood_responses(df_mood_qs):
+def _extract_mood_responses(df_mood_qs, poss_labels):
     '''
     INPUT: DataFrame
     OUTPUT: DataFrame
 
     Extracts participants' numerical rankings of their daily moods.
     '''
-    df_mood_qs['happy'] = df_mood_qs['answers_raw'].map(lambda x: int(x[17]))
-    df_mood_qs['stressed'] = df_mood_qs['answers_raw'].map(lambda x: int(x[21]))
-    df_mood_qs['productive'] = df_mood_qs['answers_raw'].map(lambda x: x[25])
-    df_mood_qs = df_mood_qs[df_mood_qs['productive'] != '>']    # Drops very few
-    df_mood_qs.loc[:, 'productive'] = df_mood_qs['productive'].map(lambda x: int(x))
+    if poss_labels.count('happy') > 0:
+        df_mood_qs['happy'] = df_mood_qs['answers_raw'].map(lambda x: int(x[17]))
+    if poss_labels.count('stressed') > 0:
+        df_mood_qs['stressed'] = df_mood_qs['answers_raw'].map(lambda x: int(x[21]))
+    if poss_labels.count('productive') > 0:
+        df_mood_qs['productive'] = df_mood_qs['answers_raw'].map(lambda x: x[25])
+        df_mood_qs = df_mood_qs[df_mood_qs['productive'] != '>']    # Drops very few
+        df_mood_qs.loc[:, 'productive'] = df_mood_qs['productive'].map(lambda x: int(x))
     df_mood_qs.drop(['name', 'answers_len', 'questions_raw', 'answers_raw'], axis=1, inplace=True)
     return df_mood_qs
 
@@ -52,7 +55,7 @@ def _create_dummies(df_mood_qs, to_dummyize, very_cutoff_inclusive, very_un_cuto
         df_mood_qs[very_un_name] = 0 + (df_mood_qs[lab] <= 2)
     return df_mood_qs
 
-def create_poss_labels(fname, to_dummyize, very_cutoff_inclusive=6, very_un_cutoff_inclusive=2, answer_offset_cutoff=-1):
+def create_poss_labels(fname, poss_labels, to_dummyize, very_cutoff_inclusive=6, very_un_cutoff_inclusive=2, answer_offset_cutoff=-1):
     '''
     INPUT: string, int
     OUTPUT: DataFrame
@@ -79,7 +82,7 @@ def create_poss_labels(fname, to_dummyize, very_cutoff_inclusive=6, very_un_cuto
             - very_unproductive, 1 if productive <= very_un_cutoff_inclusive
     '''
     df_mood_qs = _read_clean(fname)
-    df_mood_qs = _extract_mood_responses(df_mood_qs)
+    df_mood_qs = _extract_mood_responses(df_mood_qs, poss_labels)
     df_mood_qs = _create_dummies(df_mood_qs, to_dummyize, very_cutoff_inclusive, very_un_cutoff_inclusive)
 
     ''' Drops where the survey is answered before the corresponding date has passed '''
