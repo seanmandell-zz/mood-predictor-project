@@ -9,7 +9,11 @@
 4. [Methodology](#methodology)
 
   - [Step 1: Create Possible Labels](#step-1-create-possible-labels)
-  - [Features I Engineered](#features-i-engineered)
+  - [Step 2: Engineer Features](#step-2-engineer-features)
+  ## Step 3: Choose a Model
+
+  ## Step 4: GridSearch
+
 
 ## Bullet-Point Summary
 * I tried to predict daily mood from phone use data.
@@ -35,7 +39,7 @@ I chose this project for 3 main reasons:
 
 Study participants rated how happy, sad, and productive (the last of which I think counts as a mood among ambitious grad students) they were every day on a scale from 1-7.
 
-## Features I Engineered
+## Step 2: Engineer Features
 
 The features I engineered can be split into two categories: basic and advanced. You can see both summarized in the table below.
 
@@ -60,7 +64,9 @@ Note that these centrality measures, like the per-day averages mentioned above, 
 
 
 
-## Choosing a Model
+## Step 3: Choose a Model
+
+## Step 4: GridSearch
 
 
 
