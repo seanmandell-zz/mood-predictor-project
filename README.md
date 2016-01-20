@@ -3,10 +3,13 @@
 ## Note: This is a work in progress (1/19). Check back soon.
 
 ## Table of Contents
-- [Bullet-Point Summary](#bullet-point-summary)
-- [Overview](#overview)
+1. [Bullet-Point Summary](#bullet-point-summary)
+2. [Overview](#overview)
 
 ## Bullet-Point Summary
+* I tried to predict daily mood from phone use data.
+* Doing this appears to be difficult!
+* Through extensive feature engineering, I got a proof-of-concept model that indicates that further feature engineering may be able to yield a good model.
 
 ## Overview
 
@@ -16,12 +19,15 @@ My goal was to predict people's self-reported daily moods based solely on their 
 
 ### Methodology
 
-I chose this project in large part because I knew it would involve extensive feature engineering, and I thought it would be a fun challenge; at the outset, it wasn't clear how much phone usage data would reveal about people's moods. In devising potentially useful features, I looked to [existing](http://hd.media.mit.edu/tech-reports/TR-670.pdf) [literature](http://disi.unitn.it/~staiano/pubs/SLAPSP_UBICOMP12.pdf), which inspired me to extract or create features related to the students' social interactions and social networks. However, other than this general guidance, I was on my own to try different features and see what worked best. I also tried different models, settling on [Gradient Boosted Regression Trees](http://scikit-learn.org/stable/modules/generated/sklearn.ensemble.GradientBoostingRegressor.html), and used GridSearch to optimize parameters.
+I chose this project in large part because I knew it would involve extensive feature engineering, and I thought it would be a fun challenge; at the outset, it wasn't clear how much phone usage data would reveal about people's moods. In devising potentially useful features, I looked to [existing](http://hd.media.mit.edu/tech-reports/TR-670.pdf) [literature](http://disi.unitn.it/~staiano/pubs/SLAPSP_UBICOMP12.pdf), which inspired me to extract or create **features related to the students' social interactions and social networks**. However, other than this general guidance, I was on my own to try different features and see what worked best. I also tried different models, settling on [Gradient Boosted Regression Trees](http://scikit-learn.org/stable/modules/generated/sklearn.ensemble.GradientBoostingRegressor.html), and used GridSearch to optimize parameters.
+
+
+
 
 ### Findings
 
 
-
+![Table]('/Users/seanmandell/Desktop/Galvanize Boot Camp/Capstone Project/mood-predictor-project/~other/README Images')
 
 ##
 
