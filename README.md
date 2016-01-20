@@ -83,7 +83,7 @@ In my case, I needed the data to be sorted by participant so that participants w
 
 
 
-![Table](https://github.com/seanmandell/mood-predictor-project/tree/master/README-Images/table_advfeatures.png)
+![Table](https://raw.githubusercontent.com/seanmandell/mood-predictor-project/master/README-Images/table_advfeatures.png)
 
 ##
 
