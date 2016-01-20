@@ -7,12 +7,10 @@
 2. [Overview](#overview)
 3. [Why I Chose This Project](#why-i-chose-this-project)
 4. [Methodology](#methodology)
-
   - [Step 1: Create Possible Labels](#step-1-create-possible-labels)
   - [Step 2: Engineer Features](#step-2-engineer-features)
-  ## Step 3: Choose a Model
-
-  ## Step 4: GridSearch
+  - [Step 3: Choose a Model](#step-3-choose-a-model)
+  - [Step 4: GridSearch](#step-4-gridsearch)
 
 
 ## Bullet-Point Summary
