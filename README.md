@@ -83,7 +83,7 @@ In my case, I needed the data to be sorted by participant so that participants w
 
 
 
-![Table]('/Users/seanmandell/Desktop/Galvanize Boot Camp/Capstone Project/mood-predictor-project/~other/README Images/table_advfeatures')
+![Table](https://github.com/seanmandell/mood-predictor-project/tree/master/README-Images/table_advfeatures.png)
 
 ##
 
