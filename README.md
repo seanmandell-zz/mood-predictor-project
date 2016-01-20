@@ -7,8 +7,8 @@
 2. [Overview](#overview)
 3. [Why I Chose This Project](#why-i-chose-this-project)
 4. [Methodology](#methodology)
-5. [Step 1: Create Possible Labels](#step-1-create-possible-labels)
-6. [Features I Engineered](#features-i-engineered)
+  a. [Step 1: Create Possible Labels](#step-1-create-possible-labels)
+  b. [Features I Engineered](#features-i-engineered)
 
 ## Bullet-Point Summary
 * I tried to predict daily mood from phone use data.
@@ -75,10 +75,13 @@ Note that these centrality measures, like the per-day averages mentioned above, 
 
 * **Missing data**.
 This one surprised me given that this is a recent academic study, but in the first half of the study there appears to be a lot of missing call, text, Bluetooth, and possibly other data. The way the mood questions were asked changed halfway through the study period, so I had to use data from the second half.
+
 * **Cross-validation intricacies**.
 The folds created by scikit-learn's cross-validation are deterministic, meaning that when you don't shuffle your data before creating folds for cross-validation--which I didn't--the folds should be the same every time. The state your data is in when the folds are created--especially how your data is sorted--can matter.
 
 In my case, I needed the data to be sorted by participant so that participants wouldn't appear in most or all of the folds; this would be a problem because the model could "learn" individual participants while training (especially because I had some features that were constant for a given participant throughout the whole study), making it unrealistically good on the test set. (Note that sorting the data by participant would likely result in up to 4 participant [given 5-fold cross-validation] being split across multiple folds, but with this representing only a tiny share of all participants, this wasn't a big enough problem to make it worth engineering around.)
+
+At first, when I got a preliminary model up and running, I mistakenly thought that my data was sorted by participant, when it was actually sorted by date. This led me to believe my model was much better than it was! The fact that the model performed better in this cross-validation set up, when it could "learn" individual participants, implies that certain participants were happier on average than others during the study period, and that the differences were big enough to improve the model's performance by a significant amount.
 
 
 
