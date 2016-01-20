@@ -1,6 +1,12 @@
-# Mood Predictor
+# Mood From Phone
 
 ## Note: This is a work in progress (1/19). Check back soon.
+
+## Table of Contents
+- [Bullet-Point Summary](#bullet-point-summary)
+- [Overview](#overview)
+
+## Bullet-Point Summary
 
 ## Overview
 

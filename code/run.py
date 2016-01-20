@@ -1,8 +1,8 @@
 from sklearn import cross_validation
 from sklearn.svm import SVR
 from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, AdaBoostRegressor, \
-                             GradientBoostingRegressor, GradientBoostingClassifier
+from sklearn.ensemble import RandomForestRegressor, AdaBoostRegressor, \
+                             GradientBoostingRegressor
 from sklearn.tree import DecisionTreeRegressor
 from test_models import ModelTester
 
@@ -31,7 +31,6 @@ if __name__ == '__main__':
                           ]
 
     ''' Defines models '''
-    ''' Regressors '''
     svr = SVR()
     svr_poly = SVR(kernel='poly')
     lr = LinearRegression()
@@ -48,13 +47,9 @@ if __name__ == '__main__':
     gbr_gridsearched = GradientBoostingRegressor(n_estimators=12000, learning_rate=0.003, max_depth=4,\
                                                  max_features=0.1, min_samples_leaf=7)
     gbr_stoch = GradientBoostingRegressor(subsample=0.1)
-    ''' Classifiers '''
-    rfc = RandomForestClassifier(n_jobs=-1, random_state=42)
-    gbc = GradientBoostingClassifier()
-    gbc_gbrgridsearch = GradientBoostingClassifier(n_estimators=1000, learning_rate=0.02, max_depth=4, max_features=0.1, min_samples_leaf=5)
 
     ''' Note: if using a model (e.g., Linear Regression) that doesn't support feature importances,
-              must comment out last 6 lines of test_models.py (starting 'print "\n\n", descrip')
+              must comment out 3 lines near the end ofof test_models.py under the comment 'Feature Importances'
     '''
     MODELS_TO_USE = [   # Which models to test. Scroll to bottom for descriptions of each
             #   rfr,
@@ -67,9 +62,6 @@ if __name__ == '__main__':
               gbr#,
                 # gbr_gridsearched,
             #   gbr_stoch,
-            #   rfc,
-            #   gbc,
-            #   gbc_gbrgridsearch,
                 # svr,
                 # lr,
                 # svr_poly,
@@ -109,10 +101,6 @@ if __name__ == '__main__':
     descrips_all[gbr] = 'gbr -- Gradient-Boosting Regressor'
     descrips_all[gbr_stoch] = 'gbr_stoch -- *stochastic* Gradient-Boosting Regressor'
     descrips_all[gbr_gridsearched] = 'gbr gridsearched -- Gradient-Boosting Regressor, optimized'
-    ''' Classifiers '''
-    descrips_all[rfc] = 'rfc -- Random Forest Classifier'
-    descrips_all[gbc] = 'gbc -- Gradient Boosting Classifier'
-    descrips_all[gbc_gbrgridsearch] = 'gbc gbrgridsearch -- Gradient Boosting Classifier, using GBR\'s gridsearched params'
 
     model_descrip_dict = {} # To pass in to mt.fit_score_models below
     for model in MODELS_TO_USE:
