@@ -8,8 +8,8 @@
 3. [Why I Chose This Project](#why-i-chose-this-project)
 4. [Methodology](#methodology)
 
-  a. [Step 1: Create Possible Labels](#step-1-create-possible-labels)
-  b. [Features I Engineered](#features-i-engineered)
+  - [Step 1: Create Possible Labels](#step-1-create-possible-labels)
+  - [Features I Engineered](#features-i-engineered)
 
 ## Bullet-Point Summary
 * I tried to predict daily mood from phone use data.
