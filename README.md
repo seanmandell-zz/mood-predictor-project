@@ -8,7 +8,7 @@
 
 ## Bullet-Point Summary
 * I tried to predict daily mood from phone use data.
-* Doing this appears to be difficult!
+* Doing this with a high degree of accuracy appears to be difficult!
 * Through extensive feature engineering, I got a proof-of-concept model that indicates that further feature engineering may be able to yield a good model.
 
 ## Overview
@@ -27,7 +27,7 @@ I chose this project in large part because I knew it would involve extensive fea
 ### Findings
 
 
-![Table]('/Users/seanmandell/Desktop/Galvanize Boot Camp/Capstone Project/mood-predictor-project/~other/README Images')
+![Table]('/Users/seanmandell/Desktop/Galvanize Boot Camp/Capstone Project/mood-predictor-project/~other/README Images/table_advfeatures')
 
 ##
 
