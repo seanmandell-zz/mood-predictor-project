@@ -1,28 +1,40 @@
 # Mood from Phone
-
-## Note: This is a work in progress (1/19). Check back soon.
+### Sean Mandell
 
 ## Table of Contents
-1. [Bullet-Point Summary](#bullet-point-summary)
-2. [Overview](#overview)
-3. [Why I Chose This Project](#why-i-chose-this-project)
+1. [A Very Short Summary](#a-very-short-summary)
+2. [How to Run My Code](#how-to-run-my-code)
+3. [Overview](#overview)
 4. [Methodology](#methodology)
   - [Step 1: Create Possible Labels](#step-1-create-possible-labels)
   - [Step 2: Engineer Features](#step-2-engineer-features)
   - [Step 3: Choose a Model](#step-3-choose-a-model)
   - [Step 4: GridSearch](#step-4-gridsearch)
+5. [Findings](#findings)
+6. [Things I Learned](#things-i-learned)
 
 
-## Bullet-Point Summary
+## A Very Short Summary
 * I tried to predict daily mood from phone use data.
 * Doing this with a high degree of accuracy appears to be difficult!
 * Through extensive feature engineering, I got a proof-of-concept model that indicates that further feature engineering may be able to yield a good model.
 
+## How to Run My Code
+
+If you'd like to see how my program works or play around with different models, you can run my code! This is what you need to do to achieve that.
+
+1. Download the data I used [here](http://realitycommons.media.mit.edu/friendsdataset.html). It's freely available, but you'll need to fill in some personal information.
+2. Unzip/unpack the data so you have CSV files.
+3. Put the files in a folder called 'data,' which should be in the same directory (folder level) as the 'code' folder.
+4. Run the program from run.py. At the top are some fields you can change if you'd like; how to do so should be clearly marked.
+
 ## Overview
+
+### Goal
 
 My goal was to predict people's self-reported daily moods based solely on their phone usage data. I used data from the [2010-11 MIT Friends and Family study](http://realitycommons.media.mit.edu/friendsdataset.html), in which ~200 graduate students were given Android phones that tracked them (calls, texts, bluetooth proximity to other devices, etc., all anonymized). The students also filled out daily, weekly, and monthly surveys, answering questions such as the moods they felt each day.
 
-## Why I Chose This Project
+### Motivation
 
 I chose this project for 3 main reasons:
 * **Commercial and mental health applications.**
@@ -35,7 +47,7 @@ I chose this project for 3 main reasons:
 
 ## Step 1: Create Possible Labels
 
-Study participants rated how happy, sad, and productive (the last of which I think counts as a mood among ambitious grad students) they were every day on a scale from 1-7.
+Study participants rated how happy, stressed, and productive (the last of which I think counts as a mood among ambitious grad students) they were every day on a scale from 1-7. I also created dummy versions of these; for example, a happiness of 4 or higher would be 1 for my happy dummy, 0 otherwise. In addition, I created very (happy/stressed/productive) and very un-(happy/stressed/productive) dummies, where 6 and 2 were the respective, inclusive cutoffs.
 
 ## Step 2: Engineer Features
 
@@ -64,22 +76,48 @@ Note that these centrality measures, like the per-day averages mentioned above, 
 
 ## Step 3: Choose a Model
 
+I tried running various sets of features through various models to see what performed best. For example, I tried:
+
+- Linear Regression
+- Decision Tree Regressor
+- Random Forest Regressor
+- Support Vector Machine Regressor (both rbf and polynomial kernel)
+- AdaBoost Regressor (varying learning rates and loss functions)
+- Gradient Boosted Regressor (including stochastic)
+
+I tried to predict 'happy,' 'stressed,' and 'productive,' levels (from 1 to 7) with all of these.
+
+I also tried a few classifier models the dummy versions of these variables (e.g., happy or not, very happy or not, very unhappy or not). However, I didn't pursue classification very much, because (a) I was more interested in making specific number predictions, and (b) the classifiers didn't seem to be obvious improvements over the regressors. (Side note: an interesting extension of this project would be to try to predict, e.g., very unhappy; this could have mental health applications.)
+
+After I created all my features, I looked at R^2 values for different regressor models for each of the three moods. See the below graph.
+
+![Table](https://raw.githubusercontent.com/seanmandell/mood-predictor-project/master/README-Images/choosing_model.png)
+
+0.0 is a good baseline to compare the models with, because that's the R^2 associated with always simply guessing the average mood over the whole study. As you can see, a couple of the models fared pretty poorly. I played around with the 2 boosting models plus the SVM, ultimately getting the best results with the gradient boosted regression trees (GBRT).
+
+GBRT is often a pretty effective off-the-shelf machine learning model. It trains by sequentially fitting many [decision trees](https://en.wikipedia.org/wiki/Decision_tree) to the previous decision tree's residuals, then outputting a model that
+
 ## Step 4: GridSearch
 
-
+I used scikit-learn's GridSearchCV to optimize the GBRT's hyperparameters. You can read more about the GridSearch iterations [here](https://github.com/seanmandell/mood-predictor-project/blob/master/gridsearch_results.md). In short: I ended up using a learning rate of 0.003 (very slow), 12,000 estimators, max depth of 4, max features (at each split, a la random forest) of 0.1, and minimum samples per leaf of 7.
 
 ## Findings
 
-## Things I Tried That Didn't Work
+Did all the feature engineering pay off? To decide, we can look at how adjusted R^2 changes as we add in more features. (Unadjusted R^2 always increases with more features, hence the use of the adjusted metric.)
+
+
+
+## Things I Learned
+
+### Things I Tried That Didn't Work
 
 * **"De-medianed" (by participant) features**, for every existing feature. This didn't improve model performance, and it made runtime a lot longer by roughly doubling the number of features.
 * **Only considering more "trustworthy" survey responses**--say, ones submitted within 3 days of the day the mood question referred to.
-*
 
-## Other Stumbling Blocks
+### Stumbling Blocks
 
 * **Missing data**.
-This one surprised me given that this is a recent academic study, but in the first half of the study there appears to be a lot of missing call, text, Bluetooth, and possibly other data. The way the mood questions were asked changed halfway through the study period, so I had to use data from the second half.
+This one surprised me given that this is a recent academic study, but in the first half of the study there appears to be a lot of missing call, text, Bluetooth, and possibly other data, at least in the publicly available dataset. The way the mood questions were asked changed halfway through the study period, so I had to use data from the second half.
 
 * **Cross-validation intricacies**.
 The folds created by scikit-learn's cross-validation are deterministic, meaning that when you don't shuffle your data before creating folds for cross-validation--which I didn't--the folds should be the same every time. The state your data is in when the folds are created--especially how your data is sorted--can matter.

@@ -21,7 +21,7 @@ if __name__ == '__main__':
     advanced_call_sms_bt_features = True    # Whether to include advanced Call/SMS/Bluetooth features
     add_centrality_chars = True     # Whether to include graph centrality characteristics (Bluetooth)
     N_FOLDS = 5   # Number of folds to use in cross-validation
-    POSS_LABELS = ['happy', 'stressed']#, 'productive']
+    POSS_LABELS = ['happy']#, 'stressed', 'productive']
     TO_DUMMYIZE = ['happy']    # Mood(s) to create dummies with: happy, stressed, and/or productive
     FEATURE_TEXT_FILES = [
                           "SMSLog.csv",
@@ -55,12 +55,12 @@ if __name__ == '__main__':
             #   rfr,
             #   dtr,
             #   abr25,
-              abr50,
+                # abr50,
             #   abr100,
             #   abr50_squareloss,
             #   abr50_exploss,
-              gbr#,
-                # gbr_gridsearched,
+                # gbr,
+                gbr_gridsearched#,
             #   gbr_stoch,
                 # svr,
                 # lr,
