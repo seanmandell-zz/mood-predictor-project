@@ -20,9 +20,10 @@ if __name__ == '__main__':
     basic_features = True   # Whether to include basic features for all dfs
     advanced_call_sms_bt_features = True    # Whether to include advanced Call/SMS/Bluetooth features
     add_centrality_chars = True     # Whether to include graph centrality characteristics (Bluetooth)
+    reduce_dimensions = False    # Whether to reduce the number of features. Keeps 90% of energy.
     N_FOLDS = 5   # Number of folds to use in cross-validation
     POSS_LABELS = ['happy']#, 'stressed', 'productive']
-    TO_DUMMYIZE = ['happy']    # Mood(s) to create dummies with: happy, stressed, and/or productive
+    TO_DUMMYIZE = []#'happy']    # Mood(s) to create dummies with: happy, stressed, and/or productive
     FEATURE_TEXT_FILES = [
                           "SMSLog.csv",
                           "CallLog.csv",
@@ -52,7 +53,7 @@ if __name__ == '__main__':
               must comment out 3 lines near the end ofof test_models.py under the comment 'Feature Importances'
     '''
     MODELS_TO_USE = [   # Which models to test. Scroll to bottom for descriptions of each
-            #   rfr,
+              rfr,
             #   dtr,
             #   abr25,
                 # abr50,
@@ -86,7 +87,6 @@ if __name__ == '__main__':
 
     ''' Loads up {model-->description} dictionary to pass into fit_score_models '''
     descrips_all = {}
-    ''' Regressors '''
     descrips_all[svr] = 'svr -- Support Vector Machine Regressor'
     descrips_all[svr_poly] = 'svr_poly -- Support Vector Machine Regressor, polynomial kernel'
     descrips_all[lr] = 'lr -- Linear Regression'
@@ -109,7 +109,8 @@ if __name__ == '__main__':
 
     ''' 3. Runs the model tester ******************************************** '''
     mt = ModelTester(FEATURE_TEXT_FILES, POSS_LABELS, TO_DUMMYIZE, basic_features, \
-                     advanced_call_sms_bt_features, add_centrality_chars=add_centrality_chars)
+                     advanced_call_sms_bt_features, add_centrality_chars=add_centrality_chars, \
+                     reduce_dimensions=reduce_dimensions)
     mt.create_feature_label_mat()
     mt.create_cv_pipeline(N_FOLDS)
     mt.fit_score_models(model_descrip_dict)

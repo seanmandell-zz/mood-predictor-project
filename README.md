@@ -7,23 +7,34 @@ I think that after you read either the [Very Short Summary](#a-very-short-summar
 
 ## Table of Contents
 1. [A Very Short Summary](#a-very-short-summary)
-2. [How to Run My Code](#how-to-run-my-code)
-3. [Overview](#overview)
-4. [Methodology](#methodology)
+2. [Overview of Code](#overview-of-code)
+3. [How to Run My Code](#how-to-run-my-code)
+4. [Overview](#overview)
+5. [Methodology](#methodology)
   - [Step 1: Create Possible Labels](#step-1-create-possible-labels)
   - [Step 2: Engineer Features](#step-2-engineer-features)
   - [Step 3: Choose a Model](#step-3-choose-a-model)
-  - [Step 4: GridSearch](#step-4-gridsearch)
-5. [Findings](#findings)
-6. [Future Work](#future-work)
-7. [Things I Learned](#things-i-learned)
-8. [Conclusion](#conclusion)
+  - [Step 4: Dimensionality Reduction / Feature Selection](#step-4-dimensionality-reduction-feature-selection)
+  - [Step 5: GridSearch](#step-5-gridsearch)
+6. [Findings](#findings)
+7. [Future Work](#future-work)
+8. [Things I Learned](#things-i-learned)
+9. [Conclusion](#conclusion)
 
 ## A Very Short Summary
 * I tried to predict daily mood from phone use data.
 * Doing this with a high degree of accuracy appears to be difficult!
 * Through extensive feature engineering, I got a proof-of-concept model that indicates that further feature engineering may be able to yield a good model.
 * (Check out my ideas for further feature engineering [down here](#future-work).)
+
+## Overview of Code
+
+What each file in the "code" folder does:
+
+* run.py: used to run the model tester.
+* test_models.py: the heart of the code. Defines Model Tester class, which reads in DataFrames, cleans the data, creates the feature-label matrix, tests different models, and so on.
+* create_labels.py: called on by Model Tester to create possible labels from the raw data.
+* feature_engineer.py: called on by Model Tester to engineer features.
 
 ## How to Run My Code
 
@@ -88,6 +99,7 @@ I also used NetworkX to create for each participant three measures of graph cent
 
 Note that these centrality measures, like the per-day averages mentioned above, are constant for each participant throughout the study period.
 
+
 ### Step 3: Choose a Model
 
 I tried running various sets of features through various models to see what performed best. For example, I tried:
@@ -111,7 +123,21 @@ After I created all my features, I looked at R^2 values for different regressor 
 
 GBRT is often a pretty effective off-the-shelf machine learning model. It trains by sequentially fitting many [decision trees](https://en.wikipedia.org/wiki/Decision_tree) to the previous decision tree's residuals, then outputting a model that averages out all of the decision trees.
 
-### Step 4: GridSearch
+### Step 4: Dimensionality Reduction / Feature Selection
+
+I ended up with roughly 60 features, many of which were likely either highly correlated with each other or noisy, so it made sense to try to reduce the number of features. I tried two different ways of doing this:
+
+1. **Dimensionality Reduction**: I ran PCA (which is implemented with SVD in scikit-learn) on all features, keeping 90% of energy (variance explained).
+	- Interesting side note: it's improper to run dimensionality reduction on the dataset _before_ setting up cross-validation; instead, each train fold must have its dimensions reduced apart from the test fold. Otherwise, the model learns from the test set before being run on it. See [_The Elements of Statistical Learning_](http://web.stanford.edu/~hastie/local.ftp/Springer/OLD/ESLII_print4.pdf), pp. 245-247, for more.
+
+2. **Feature Selection**: After running a given model with all features left in, I ran the model again using only the features with the highest feature importances.
+
+Note that steps 3, 4, and 5 were not perfectly chronological; I tried various combinations of models and methods of limiting the number of features and tested various parameters within each of these.
+
+Neither of these techniques yielded a significant improvement in the most promising models I looked at.
+
+
+### Step 5: GridSearch
 
 I used scikit-learn's GridSearchCV to optimize the GBRT's hyperparameters. You can read more about the GridSearch iterations [here](https://github.com/seanmandell/mood-predictor-project/blob/master/gridsearch_results.md). In short: I ended up using a learning rate of 0.003 (very slow), 12,000 estimators, max depth of 4, max features (at each split, a la random forest) of 0.1, and minimum samples per leaf of 7.
 

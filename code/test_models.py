@@ -6,12 +6,17 @@ from datetime import datetime
 from sklearn import cross_validation
 from create_labels import create_poss_labels
 from feature_engineer import FeatureEngineer
+from sklearn.preprocessing import StandardScaler
+
+from sklearn.decomposition import PCA
+
 
 class ModelTester(object):
     def __init__(self, feature_text_files, poss_labels, to_dummyize, basic_features=True, \
                  advanced_call_sms_bt_features=True, add_centrality_chars=True, \
-                 very_cutoff_inclusive=6, very_un_cutoff_inclusive=2, min_date='2010-11-12', \
-                 max_date='2011-05-21', create_demedianed=False, Fri_weekend=True, keep_dow=True):
+                 reduce_dimensions=False, very_cutoff_inclusive=6, \
+                 very_un_cutoff_inclusive=2, min_date='2010-11-12', max_date='2011-05-21', \
+                 create_demedianed=False, Fri_weekend=True, keep_dow=True):
         '''
         INPUT:
             - feature_text_files: list of strings--CSV files containing features data
@@ -37,6 +42,7 @@ class ModelTester(object):
         self.basic_features = basic_features
         self.advanced_call_sms_bt_features = advanced_call_sms_bt_features
         self.add_centrality_chars = add_centrality_chars
+        self.reduce_dimensions = reduce_dimensions
         self.min_date = min_date
         self.max_date = max_date
         self.create_demedianed = create_demedianed
@@ -211,6 +217,7 @@ class ModelTester(object):
 
         Divides feature-label matrix into n_folds folds, saving each to, respectively,
         X_train_folds, X_test_folds, y_all_train_folds, and y_all_test_folds.
+        Scales features if self.reduce_dimensions set to True.
         To be used in n_folds-fold cross-validation.
         '''
 
@@ -221,6 +228,11 @@ class ModelTester(object):
         drop_from_X = self.poss_labels + ['participantID', 'date']
         self.features_used = self.feature_label_mat.drop(drop_from_X, axis=1).columns.values
         self.feature_label_mat.sort('participantID', inplace=True)  # Necessary so doesn't "learn" the participants
+
+        if self.reduce_dimensions:
+            scaler = StandardScaler()
+            self.feature_label_mat[self.features_used] = scaler.fit_transform(self.feature_label_mat[self.features_used])
+
         X = self.feature_label_mat.drop(drop_from_X, axis=1).values
         y_all = self.feature_label_mat[self.poss_labels].values
 
@@ -232,53 +244,59 @@ class ModelTester(object):
             self.X_test_folds.append(X_test)
             self.y_all_train_folds.append(y_all_train)
             self.y_all_test_folds.append(y_all_test)
-        print "Cross-validation pipeline created"
+        print "Cross-validation folds created"
 
-    def calc_adj_r2(self, r2, n_feat, samp_size):
-        '''
-        INPUT: float, int, int
-        OUTPUT: float
-
-        Calculates Adjusted R^2 given sample R^2, number of features, and sample size.
-        '''
-        return 1 - ((1-r2)*(samp_size-1)/(samp_size-n_feat-1))
-
-    def fit_score_models(self, models):
+    def fit_score_models(self, models, energy_kept=0.9):
         '''
         INPUT: dict of model --> string (e.g.,: {rfr: 'Random Forest Regressor', ...})
         OUTPUT: None
 
         Fits and scores inputted models, printing out k-fold scores and average score.
+        Reduces dimensions if self.reduce_dimensions, keeping energy_kept proportion of energy (or # of features).
         Saves feature importances in feature_importances.
         '''
+
+        '''
+        INPUT: Float
+        OUTPUT: None
+        Scales, then uses PCA on self.feature_label_mat to reduce the number of features, preserving
+        energy_kept proportion of the original energy (variance).
+        '''
+
         self.models = models    # Mostly to save for future reference
         for model, descrip in models.iteritems():
             mean_scores_by_label, mean_adj_r2_by_label = {}, {}
             for poss_label_col_num, poss_label in enumerate(self.poss_labels):
                 scores = np.zeros(self.n_folds)
                 for i in xrange(self.n_folds):
-                    X_train = self.X_train_folds[i]
+                    X_train, X_test = self.X_train_folds[i], self.X_test_folds[i]
                     y_train = self.y_all_train_folds[i][:, poss_label_col_num]
+
+                    # Reducing dimensions: fits on X_train, transforms X_train and X_test
+                    if self.reduce_dimensions:
+                        pca = PCA(n_components=energy_kept)
+                        pca.fit(X_train)
+                        X_train = pca.transform(X_train)
+                        X_test = pca.transform(X_test)
+
                     model.fit(X_train, y_train)
-                    scores[i] = model.score(self.X_test_folds[i], self.y_all_test_folds[i][:, poss_label_col_num])
+                    scores[i] = model.score(X_test, self.y_all_test_folds[i][:, poss_label_col_num])
                 print "scores: ", scores
                 mean_scores_by_label[poss_label] = np.mean(scores)
                 samp_size = self.feature_label_mat.shape[0]
                 n_feat = len(self.features_used)
-                mean_adj_r2_by_label[poss_label] = self.calc_adj_r2(mean_scores_by_label[poss_label], n_feat, samp_size)
 
                 ''' Feature importances '''
-                importances = np.array(zip(self.features_used, model.feature_importances_))
-                descending_importance_indexes = np.argsort(model.feature_importances_)[::-1]
-                self.feature_importances.append((descrip, poss_label, importances[descending_importance_indexes]))
+                if not self.reduce_dimensions:
+                    importances = np.array(zip(self.features_used, model.feature_importances_))
+                    descending_importance_indexes = np.argsort(model.feature_importances_)[::-1]
+                    self.feature_importances.append((descrip, poss_label, importances[descending_importance_indexes]))
 
             ''' R^2, Adjusted R^2 '''
             print "\n\n", descrip
             print "==================================================="
+            if self.reduce_dimensions: print "Results with dimensions reduced:"
             for label, score in mean_scores_by_label.iteritems():
                 print label, " R^2: ", score
-            print "\n"
-            for label, adj_r2 in mean_adj_r2_by_label.iteritems():
-                print label, "adjusted R^2: ", adj_r2
             print "==================================================="
             print "\n"
